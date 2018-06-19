@@ -1,3 +1,5 @@
+#pylint: disable = E1129, W0614
+
 import numpy as np
 import scipy
 from radon_veto.config import *
@@ -6,7 +8,6 @@ from multiprocessing import Pool
 from functools import partial
 import scipy.interpolate, scipy.signal
 import pdb
-
 
 #unfortunately, numba speedup is minimal; it will likely stay this way until I can be bothered to write my own interpolation code.
 #This is because numba is unable to enter no-python mode.
@@ -22,7 +23,6 @@ def f(y, t, seed, timestep, velocity_array_with_noise):
     This also means we can simply use the coords as a random seed, plus some salt based on the particle's position in point cloud.'''
     if any(np.isnan(y).flatten()):
         return y
-    max_step = max(steps)
     coord_indices = interp_index_from_coord(y)
     coord_indices2 = []
     if (coord_indices < np.array(velocity_array_with_noise.shape)).all():
@@ -58,7 +58,7 @@ def filtered_vec(x,y,z, vec):
     r = np.sqrt(x**2+y**2)
     if z<-3 and z>3-height:
         a = ramp((radius-r)/(3))
-        normal_vector = -np.array([x,y,0])/r
+        normal_vector = -1*(np.array([x,y,0])/r)
         #print(x,y,normal_vector,a)
         return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
         #return a*normal_vector
@@ -72,7 +72,7 @@ def filtered_vec(x,y,z, vec):
             opp = 1-z/(-3)
             adj = 1-(radius-r)/3
             a = ramp(1-np.sqrt(opp**2+adj**2))
-            normal_vector =  (-np.array([x,y,0])/r*adj/np.sqrt(opp**2+adj**2)\
+            normal_vector =  (-1*np.array([x,y,0])/r*adj/np.sqrt(opp**2+adj**2)\
                     + np.array([0,0,-1.0])*opp/np.sqrt(opp**2+adj**2))
             return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
             #return a*normal_vector
@@ -86,7 +86,7 @@ def filtered_vec(x,y,z, vec):
             opp = 1-(z+height)/(3)
             adj = 1-(radius-r)/3
             a = ramp(1-np.sqrt(opp**2+adj**2))
-            normal_vector = (-np.array([x,y,0])/r*adj/np.sqrt(opp**2+adj**2)\
+            normal_vector = (-1*np.array([x,y,0])/r*adj/np.sqrt(opp**2+adj**2)\
                     + np.array([0,0,1.0])*opp/np.sqrt(opp**2+adj**2))
             return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
             #return a*normal_vector
@@ -95,9 +95,6 @@ def create_noise_field(seed):
     '''Here, we create the a new velocity field which combines divergence-free noise and the existing velocity field. It's basically copied from the divergence_free_noise notebook.
     Look at the notebook for detailed explanations and some maths.'''
     np.random.seed(seed=seed)
-    x_list_edges = np.linspace(limit_box[0][0],limit_box[0][1],(-limit_box[0][0]+limit_box[0][1])/gridsize[0]+1)
-    y_list_edges = np.linspace(limit_box[1][0],limit_box[1][1],(-limit_box[1][0]+limit_box[1][1])/gridsize[0]+1)
-    z_list_edges = np.linspace(limit_box[2][0],limit_box[2][1],(-limit_box[2][0]+limit_box[2][1])/gridsize[0]+1)
 
     x_list_interp = np.linspace(limit_box[0][0],limit_box[0][1],(-limit_box[0][0]+limit_box[0][1])/(gridsize[0]/(subd))+1)
     y_list_interp = np.linspace(limit_box[1][0],limit_box[1][1],(-limit_box[1][0]+limit_box[1][1])/(gridsize[0]/(subd))+1)
@@ -148,7 +145,7 @@ def generate_path(dt, y0_and_seed_and_tlims):
     y = y0
     D_sigma = np.sqrt(2*dt*diffusion_constant)
     
-    coordinate_points_new,output_array = create_noise_field(seed)
+    coordinate_points_new,output_array = create_noise_field(seed) #pylint: disable=W0612
     velocity_array_with_noise = interp_velocity_array + 1e-11*output_array
     #print('Done with generating noise')
     for i,t in enumerate(t_list[1:]):
@@ -207,7 +204,7 @@ def generate_ellipsoid_matrices(points_at_t,sigma):
     mean = np.average(points_at_t,axis=1)
     n = points_at_t.shape[1]
     #print(n)
-    u,s,vh = np.linalg.svd(points_at_t.T-mean)
+    u,s,vh = np.linalg.svd(points_at_t.T-mean) #pylint: disable=W0612
     s_mat = np.diag((n-1)/(s**2*sigma**2))
     #pdb.set_trace()
     return mean, s, vh, np.matmul(np.matmul(vh.T,s_mat),vh)
