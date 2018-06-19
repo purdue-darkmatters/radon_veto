@@ -1,8 +1,7 @@
-from pax import units
 import numpy as np
 
-gridsize = [2*units.cm, 2*units.cm, 1*units.cm]
-limit_box = [(-50*units.cm,50*units.cm), (-50*units.cm,50*units.cm), (-100*units.cm,0*units.cm)]
+gridsize = [2, 2, 1]
+limit_box = [(-50,50), (-50,50), (-100,0)]
 steps = (int(np.ceil((limit_box[0][1]-limit_box[0][0])/(gridsize[0]))),int(np.ceil((limit_box[1][1]-limit_box[1][0])/(gridsize[1]))),int(np.ceil((limit_box[2][1]-limit_box[2][0])/(gridsize[2]))))
 
 x_list = np.linspace(limit_box[0][0]+gridsize[0]/2, limit_box[0][1]-gridsize[0]/2, steps[0])
@@ -32,6 +31,9 @@ height = 96.9
 subd = 6 #subdivisions for interpolation and noise generation
 
 diffusion_constant = 5.95e-15 #cm^s/ns
+
+noise_arrays_n = 8 #2^n noise arrays
+noise_amplitude = 1e-11
 
 def interp_index_from_coord(coord):
     return (int(np.floor((coord[0]-limit_box[0][0])/(gridsize[0]/subd))), int(np.floor((coord[1]-limit_box[1][0])/(gridsize[0]/subd))), int(np.floor((coord[2]-limit_box[2][0])/(gridsize[0]/subd))))

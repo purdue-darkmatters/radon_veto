@@ -2,6 +2,7 @@
 
 import numpy as np
 import scipy
+from radon_veto.noise_generation import *
 from radon_veto.config import *
 from numba import jit,njit
 from multiprocessing import Pool
@@ -17,10 +18,7 @@ interp_velocity_array = np.load('interp_velocity_array.npy')
 
 
 @jit
-def f(y, t, seed, timestep, velocity_array_with_noise):
-    '''Random seed is needed to make sure paths generated consistent between calls;
-    that is, if the integrator calls the same value of f(t,y) twice it will get the same result.
-    This also means we can simply use the coords as a random seed, plus some salt based on the particle's position in point cloud.'''
+def f(y, t, timestep, velocity_array_with_noise):
     if any(np.isnan(y).flatten()):
         return y
     coord_indices = interp_index_from_coord(y)
@@ -36,103 +34,12 @@ def f(y, t, seed, timestep, velocity_array_with_noise):
     return v
 
 @jit
-def RK4_step(y, t, dt, seed, velocity_array_with_noise):
-    k1 = dt*f(y,t,seed,dt, velocity_array_with_noise)
-    k2 = dt*f(y+k1/2,t+dt/2,seed,dt, velocity_array_with_noise)
-    k3 = dt*f(y+k2/2,t+dt/2,seed,dt, velocity_array_with_noise)
-    k4 = dt*f(y+k3,t+dt,seed,dt, velocity_array_with_noise)
+def RK4_step(y, t, dt, velocity_array_with_noise):
+    k1 = dt*f(y,t, dt, velocity_array_with_noise)
+    k2 = dt*f(y+k1/2,t+dt/2, dt, velocity_array_with_noise)
+    k3 = dt*f(y+k2/2,t+dt/2, dt, velocity_array_with_noise)
+    k4 = dt*f(y+k3,t+dt, dt, velocity_array_with_noise)
     return(y+1/6*(k1+2*k2+2*k3+k4))
-
-@njit
-def ramp(r):
-    '''ramp function for dealing with edges when generating smooth noise function'''
-    if r<1.0 and r>-1:
-        return 3/8*r**5-10/8*r**4+15/8*r**3
-    elif r<=-1:
-        return float(0.0)
-    elif r>=1.0:
-        return 1.0
-
-def filtered_vec(x,y,z, vec):
-    '''Filtering out edges in noise function'''
-    r = np.sqrt(x**2+y**2)
-    if z<-3 and z>3-height:
-        a = ramp((radius-r)/(3))
-        normal_vector = -1*(np.array([x,y,0])/r)
-        #print(x,y,normal_vector,a)
-        return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
-        #return a*normal_vector
-    if z>=-3:
-        if r < radius-3:
-            a = ramp((z)/(-3))
-            normal_vector = np.array([0,0,-1.0])
-            return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
-            #return a*normal_vector
-        if r >= radius-3:
-            opp = 1-z/(-3)
-            adj = 1-(radius-r)/3
-            a = ramp(1-np.sqrt(opp**2+adj**2))
-            normal_vector =  (-1*np.array([x,y,0])/r*adj/np.sqrt(opp**2+adj**2)\
-                    + np.array([0,0,-1.0])*opp/np.sqrt(opp**2+adj**2))
-            return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
-            #return a*normal_vector
-    if z<=3-height:
-        if r < radius-3:
-            a = ramp((z+height)/(3))
-            normal_vector = np.array([0,0,1.0])
-            return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
-            #return a*normal_vector
-        if r >= radius-3:
-            opp = 1-(z+height)/(3)
-            adj = 1-(radius-r)/3
-            a = ramp(1-np.sqrt(opp**2+adj**2))
-            normal_vector = (-1*np.array([x,y,0])/r*adj/np.sqrt(opp**2+adj**2)\
-                    + np.array([0,0,1.0])*opp/np.sqrt(opp**2+adj**2))
-            return (1-a)*normal_vector*np.dot(vec,normal_vector) + a*vec
-            #return a*normal_vector
-
-def create_noise_field(seed):
-    '''Here, we create the a new velocity field which combines divergence-free noise and the existing velocity field. It's basically copied from the divergence_free_noise notebook.
-    Look at the notebook for detailed explanations and some maths.'''
-    np.random.seed(seed=seed)
-
-    x_list_interp = np.linspace(limit_box[0][0],limit_box[0][1],(-limit_box[0][0]+limit_box[0][1])/(gridsize[0]/(subd))+1)
-    y_list_interp = np.linspace(limit_box[1][0],limit_box[1][1],(-limit_box[1][0]+limit_box[1][1])/(gridsize[0]/(subd))+1)
-    z_list_interp = np.linspace(limit_box[2][0],limit_box[2][1],(-limit_box[2][0]+limit_box[2][1])/(gridsize[0]/(subd))+1)
-    coordinate_points_interp = np.meshgrid(x_list_interp,y_list_interp,z_list_interp,indexing='ij')
-    extended_noise_array = np.random.normal(0,1,[coordinate_points_interp[0].shape[0], coordinate_points_interp[0].shape[1], coordinate_points_interp[0].shape[2], 3])
-    interp_noise_array = np.zeros(extended_noise_array.shape)
-    kernel_1d = scipy.signal.gaussian((subd)*5, (subd)*0.8)
-    kernel = np.zeros((kernel_1d.shape[0],kernel_1d.shape[0],kernel_1d.shape[0]))
-    for i in range(0,kernel_1d.shape[0]):
-        for j in range(0,kernel_1d.shape[0]):
-            for k in range(0,kernel_1d.shape[0]):
-                kernel[i,j,k] = kernel_1d[i]*kernel_1d[j]*kernel_1d[k]
-    interp_noise_array[:,:,:,0] = scipy.signal.fftconvolve(extended_noise_array[:,:,:,0], kernel, mode='same')
-    interp_noise_array[:,:,:,1] = scipy.signal.fftconvolve(extended_noise_array[:,:,:,1], kernel, mode='same')
-    interp_noise_array[:,:,:,2] = scipy.signal.fftconvolve(extended_noise_array[:,:,:,2], kernel, mode='same')
-    for i in range(0,len(x_list_interp)):
-        for j in range(0,len(y_list_interp)):
-            for k in range(0,len(z_list_interp)):
-                r = np.sqrt(coordinate_points_interp[0][i,j,k]**2+coordinate_points_interp[1][i,j,k]**2)
-                z = coordinate_points_interp[2][i,j,k]
-                if radius+3 > r > radius-3 or z >-3 or z<3-height:
-                    interp_noise_array[i,j,k] = filtered_vec(coordinate_points_interp[0][i,j,k], coordinate_points_interp[1][i,j,k], coordinate_points_interp[2][i,j,k], interp_noise_array[i,j,k])
-    dx = [np.diff(interp_noise_array[:,:,:,0],axis=0),np.diff(interp_noise_array[:,:,:,0],axis=1),np.diff(interp_noise_array[:,:,:,0],axis=2)]
-    dy = [np.diff(interp_noise_array[:,:,:,1],axis=0),np.diff(interp_noise_array[:,:,:,1],axis=1),np.diff(interp_noise_array[:,:,:,1],axis=2)]
-    dz = [np.diff(interp_noise_array[:,:,:,2],axis=0),np.diff(interp_noise_array[:,:,:,2],axis=1),np.diff(interp_noise_array[:,:,:,2],axis=2)]
-    curl_x = ((dz[1][:-1,:,:-1]+dz[1][1:,:,1:])-(dy[2][:-1,:-1,:]+dy[2][1:,1:,:]))/2
-    curl_y = ((dx[2][:-1,:-1,:]+dx[2][1:,1:,:])-(dz[0][:,:-1,:-1]+dz[0][:,1:,1:]))/2
-    curl_z = ((dy[0][:,:-1,:-1]+dy[0][:,1:,1:])-(dx[1][:-1,:,:-1]+dx[1][1:,:,1:]))/2
-    
-    coordinate_points_new = np.meshgrid((x_list_interp[:-1]+x_list_interp[1:])/2,(y_list_interp[:-1]+y_list_interp[1:])/2,(z_list_interp[:-1]+z_list_interp[1:])/2, indexing='ij')
-    
-    output_array = np.zeros(list(curl_x.shape)+[3])
-    curl_arr = np.array([curl_x,curl_y,curl_z])
-    for i in range(len(output_array[0,0,0,:])):
-        output_array[:,:,:,i] = curl_arr[i,:,:,:]
-    
-    return coordinate_points_new,output_array
 
 def generate_path(dt, y0_and_seed_and_tlims):
     '''RK4 integration with a twist: Diffusion!'''
@@ -144,15 +51,15 @@ def generate_path(dt, y0_and_seed_and_tlims):
     t_list = np.arange(*(t_lims+[dt]))
     y = y0
     D_sigma = np.sqrt(2*dt*diffusion_constant)
-    
+
     coordinate_points_new,output_array = create_noise_field(seed) #pylint: disable=W0612
-    velocity_array_with_noise = interp_velocity_array + 1e-11*output_array
+    velocity_array_with_noise = interp_velocity_array + noise_amplitude*output_array
     #print('Done with generating noise')
     for i,t in enumerate(t_list[1:]):
-        np.random.seed(seed= ((seed+i) % 4294967295))
+        np.random.seed(seed= ((seed+i*1e4) % 4294967295))
         if (y[0]**2+y[1]**2)<2401 and -99<y[2]<1:
             y_old = y
-            y = RK4_step(y,t,dt,seed, velocity_array_with_noise)+np.random.normal(scale=np.array([D_sigma,D_sigma,D_sigma]))
+            y = RK4_step(y,t,dt, velocity_array_with_noise)+np.random.normal(scale=np.array([D_sigma,D_sigma,D_sigma]))
             if any(np.isnan(y).flatten()):
                 y=y_old
         y_list.append(y)
@@ -161,7 +68,7 @@ def generate_path(dt, y0_and_seed_and_tlims):
 def point_cloud(initial_points, time, dt):
     map_list = []
     for i,point in enumerate(initial_points):
-        map_list.append(np.array(point+[i*1e7]+time))
+        map_list.append(np.array(point+[i]+time))
     map_f = partial(generate_path,dt)
     with Pool(threads) as p:
         output = []
@@ -172,7 +79,7 @@ def point_cloud(initial_points, time, dt):
 def point_cloud_tlist(initial_points, times, dt):
     map_list = []
     for i,point in enumerate(initial_points):
-        map_list.append(np.array(point+[i*1e7]+times[i]))
+        map_list.append(np.array(point+[i]+times[i]))
     map_f = partial(generate_path,dt)
     with Pool(threads) as p:
         output = []
