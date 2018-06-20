@@ -32,7 +32,7 @@ subd = 6 #subdivisions for interpolation and noise generation
 
 diffusion_constant = 5.95e-15 #cm^s/ns
 
-noise_arrays_n = 8 #2^n noise arrays
+noise_arrays_n = 2 #2^n noise arrays
 noise_amplitude = 1e-11
 
 def interp_index_from_coord(coord):
