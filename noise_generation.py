@@ -133,7 +133,8 @@ def generate_permutations(i):
 @njit
 def rotz(input_arr):
     '''Rotates vector field 90 degrees about the z axis'''
-    output_arr = np.full([input_arr.shape[1],input_arr.shape[0],input_arr.shape[2]], np.nan)
+    shape = (input_arr.shape[1],input_arr.shape[0],input_arr.shape[2],input_arr.shape[3])
+    output_arr = np.full(shape, np.nan)
     for i in range(input_arr.shape[0]):
         for j in range(input_arr.shape[1]):
             for k in range(input_arr.shape[2]):
@@ -148,7 +149,8 @@ def rotz(input_arr):
 @njit
 def rotx(input_arr):
     '''Rotates vector field 90 degrees about the x axis'''
-    output_arr = np.full([input_arr.shape[0],input_arr.shape[2],input_arr.shape[1]], np.nan)
+    shape = (input_arr.shape[0],input_arr.shape[2],input_arr.shape[1],input_arr.shape[3])
+    output_arr = np.full(shape, np.nan)
     for i in range(input_arr.shape[0]):
         for j in range(input_arr.shape[1]):
             for k in range(input_arr.shape[2]):
@@ -159,6 +161,7 @@ def rotx(input_arr):
                 output_arr[i,j_p,k_p,2] = input_arr[i,j,k,1]
     return output_arr
 
+@njit
 def flipx(input_arr):
     '''mirrors vector flip in the x-axis.'''
     output_arr = np.full(input_arr.shape, np.nan)
@@ -179,7 +182,7 @@ def compose(f,args,n):
 def transform(noise_array, dihedral_n, vert_n):
     '''transforms noise_array and stuff.'''
     if vert_n==1:
-        noise_array = rotx(noise_array)
+        noise_array = compose(rotx,noise_array,2)
     
     if dihedral_n & 1:
         noise_array = np.flip(noise_array, 0)
