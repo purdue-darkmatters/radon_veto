@@ -47,14 +47,14 @@ height = 97.5
 
 subd = 6 #subdivisions for interpolation and noise generation
 
-#diffusion_constant = 5.95e-15 #cm^s/ns
-diffusion_constant = 1e-25 #cm^s/ns
+diffusion_constant = 5.95e-15 #cm^s/ns
+#diffusion_constant = 1e-25 #cm^s/ns
 
 noise_arrays_n = 2 #2^n noise arrays
 noise_amplitude = 3e-11
 #noise_amplitude = 0
 
-use_static_arrays = True
+use_static_arrays = False
 
 def interp_index_from_coord(coord):
     '''Get interpolated index from coordinate values'''
