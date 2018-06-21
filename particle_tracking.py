@@ -18,27 +18,31 @@ interp_velocity_array = np.load('interp_velocity_array.npy')
 
 
 @jit
-def f(y, t, timestep, velocity_array_with_noise):
+def f(y, t, seed, timestep, velocity_array_with_noise):
+    '''Random seed is needed to make sure paths generated consistent between calls;
+    that is, if the integrator calls the same value of f(t,y) twice it will get the same result.
+    This also means we can simply use the coords as a random seed, plus some salt based on the particle's position in point cloud.'''
     if any(np.isnan(y).flatten()):
         return y
+    max_step = max(steps)
     coord_indices = interp_index_from_coord(y)
     coord_indices2 = []
-    if (coord_indices < np.array(velocity_array_with_noise.shape)).all():
+    if (coord_indices < np.array([300,300,300])).all():
         v = velocity_array_with_noise[coord_indices[0],coord_indices[1],coord_indices[2],:]
     else:
         print('Warning: exceeded bounding box at {}'.format(y))
-        for i,coord in enumerate(coord_indices):
-            coord_indices2 = min(coord, velocity_array_with_noise.shape[i]-1)
+        for coord in coord_indices:
+            coord_indices2.append(min(coord, velocity_array_with_noise.shape[i]-1))
         v = velocity_array_with_noise[coord_indices2[0],coord_indices2[1],coord_indices2[2],:]
     
     return v
 
 @jit
-def RK4_step(y, t, dt, velocity_array_with_noise):
-    k1 = dt*f(y,t, dt, velocity_array_with_noise)
-    k2 = dt*f(y+k1/2,t+dt/2, dt, velocity_array_with_noise)
-    k3 = dt*f(y+k2/2,t+dt/2, dt, velocity_array_with_noise)
-    k4 = dt*f(y+k3,t+dt, dt, velocity_array_with_noise)
+def RK4_step(y, t, dt, seed, velocity_array_with_noise):
+    k1 = dt*f(y,t,seed,dt, velocity_array_with_noise)
+    k2 = dt*f(y+k1/2,t+dt/2,seed,dt, velocity_array_with_noise)
+    k3 = dt*f(y+k2/2,t+dt/2,seed,dt, velocity_array_with_noise)
+    k4 = dt*f(y+k3,t+dt,seed,dt, velocity_array_with_noise)
     return(y+1/6*(k1+2*k2+2*k3+k4))
 
 def generate_path(dt, y0_and_seed_and_tlims):
@@ -51,15 +55,15 @@ def generate_path(dt, y0_and_seed_and_tlims):
     t_list = np.arange(*(t_lims+[dt]))
     y = y0
     D_sigma = np.sqrt(2*dt*diffusion_constant)
-
-    coordinate_points_new,output_array = create_noise_field(seed) #pylint: disable=W0612
-    velocity_array_with_noise = interp_velocity_array + noise_amplitude*output_array
+    
+    coordinate_points_new,output_array = create_noise_field(seed)
+    velocity_array_with_noise = interp_velocity_array + 1e-11*output_array
     #print('Done with generating noise')
     for i,t in enumerate(t_list[1:]):
-        np.random.seed(seed= ((seed+i*1e4) % 4294967295))
-        if (y[0]**2+y[1]**2)<2401 and -99<y[2]<1:
+        np.random.seed(seed= ((seed+i) % 4294967295))
+        if (y[0]**2+y[1]**2)<(radius+1)**2 and -1*height-1<y[2]<1:
             y_old = y
-            y = RK4_step(y,t,dt, velocity_array_with_noise)+np.random.normal(scale=np.array([D_sigma,D_sigma,D_sigma]))
+            y = RK4_step(y,t,dt,seed, velocity_array_with_noise)+np.random.normal(scale=np.array([D_sigma,D_sigma,D_sigma]))
             if any(np.isnan(y).flatten()):
                 y=y_old
         y_list.append(y)
@@ -124,8 +128,9 @@ def in_ellipsoid(mean,ellipsoid_matrix,point):
     r = np.matmul(np.matmul((point-mean),ellipsoid_matrix),(point-mean).T)
     return r
 
-def remove_wall_points(points):
+def remove_wall_points(points_in):
+    points = points_in.copy()
     for i,point in enumerate(points):
-        if (point[1][-1][0]**2 + point[1][-1][1]**2 > radius**2) or (point[1][-1][2] < -height) or (point[1][-1][2] > 0.5):
+        if (point[1][-1][0]**2 + point[1][-1][1]**2 > (radius+0.5)**2) or (point[1][-1][2] < -1*height-0.5) or (point[1][-1][2] > 0):
             points.pop(i)
     return points

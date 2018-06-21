@@ -25,15 +25,21 @@ timestep = 5e7
 
 posrec_sigma = [0.3,0.3,0.15]
 
-radius = 47.9
-height = 96.9
+#There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
+
+#radius = 47.9
+radius = 48.5
+#height = 96.9
+height = 97.5 
 
 subd = 6 #subdivisions for interpolation and noise generation
 
 diffusion_constant = 5.95e-15 #cm^s/ns
+#diffusion_constant = 0 #cm^s/ns
 
 noise_arrays_n = 2 #2^n noise arrays
 noise_amplitude = 1e-11
+#noise_amplitude = 0
 
 def interp_index_from_coord(coord):
     return (int(np.floor((coord[0]-limit_box[0][0])/(gridsize[0]/subd))), int(np.floor((coord[1]-limit_box[1][0])/(gridsize[0]/subd))), int(np.floor((coord[2]-limit_box[2][0])/(gridsize[0]/subd))))
