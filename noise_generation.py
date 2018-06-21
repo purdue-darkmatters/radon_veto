@@ -1,4 +1,6 @@
 '''Functions for generation and manipulation of divergence-free noise.'''
+from multiprocessing import Pool
+
 import numpy as np
 import scipy.signal
 from numba import njit
@@ -15,6 +17,10 @@ def ramp(r):
         return float(0.0)
     elif r >= 1.0:
         return 1.0
+    else:
+        print(r)
+        print(' is not valid input')
+        raise ValueError
 
 def filtered_vec(x, y, z, vec):
     '''Filtering out edges in noise function'''
@@ -55,6 +61,8 @@ def filtered_vec(x, y, z, vec):
                 + np.array([0, 0, 1.0])*opp/np.sqrt(opp**2+adj**2))
             return (1-a)*normal_vector*np.dot(vec, normal_vector) + a*vec
             #return a*normal_vector
+    print('{} is not valid input'.format([x, y, z, vec]))
+    raise ValueError
 
 
 @njit
@@ -159,12 +167,14 @@ def generate_and_save_noise_arrays():
     Please do not exceed 13, as I provisioned 4 digit file names only.
     As the symmetry group for a square cuboid is 16,
     you should never need to exceed 13 anyway.'''
-    for i in range(2**noise_arrays_n):
-        #pylint: disable=unused-variable
-        coordinate_points_new, output_array = create_noise_field(i)
-        np.save('noise_{:%04d}'.format(i), output_array)
+    total_number = 2**noise_arrays_n
+    print('Progress: {}/{} \r'.format(0, total_number))
+    with Pool(threads) as p:
+        for i, thing in enumerate(p.imap(create_noise_field, range(total_number))):
+            np.save('noise_{:04d}'.format(i), thing[1])
+            print('Progress: {}/{} \r'.format(i+1, total_number))
 
-def generate_permutations(i):
+def generate_transformations(i):
     '''return dihedral_n, vert_n, arr_n
 
     (D4 group element number, Z2 group number, noise array number)
@@ -253,9 +263,16 @@ def transform(noise_array, dihedral_n, vert_n):
                               int(np.ceil((100-height)/gridsize[0]*subd)), 2)
 
     if dihedral_n & 1:
-        noise_array = np.flip(noise_array, 0)
+        noise_array = flipx(noise_array)
 
     if dihedral_n // 2 > 0:
         noise_array = compose(rotz, noise_array, dihedral_n // 2)
 
     return noise_array
+
+def load_noise_array(seed):
+    '''Loads static noise array given permutation number (seed)'''
+    dihedral_n, vert_n, arr_n = generate_transformations(seed)
+    noise_array = np.load('noise_{:04d}.npy'.format(arr_n))
+    output_array = transform(noise_array, dihedral_n, vert_n)
+    return output_array

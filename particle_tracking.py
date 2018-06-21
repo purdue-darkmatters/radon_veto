@@ -1,12 +1,14 @@
 '''functions for point cloud propagation'''
 from multiprocessing import Pool
 from functools import partial
+import warnings as warn
 
 import numpy as np
 from numba import jit, njit
 
 from radon_veto.noise_generation import *
 from radon_veto.config import *
+from radon_veto.convenience_functions import *
 #import pdb
 
 #To-do: make more functions run in no-python mode.
@@ -55,11 +57,22 @@ def generate_path(dt, y0_and_seed_and_tlims):
     y = y0
     D_sigma = np.sqrt(2*dt*diffusion_constant)
     #pylint: disable = unused-variable
-    coordinate_points_new, output_array = create_noise_field(seed)
-    velocity_array_with_noise = interp_velocity_array + 1e-11*output_array
+    #coordinate_points_new, output_array = create_noise_field(seed)
+    if seed >= 2**(noise_arrays_n+4):
+        warn.warn('There are more points than can be supported by the'
+                  'number of noise arrays and their transformations,'
+                  'resulted in some points seeing the same velocity fields.',
+                  RuntimeWarning)
+    if use_static_arrays:
+        velocity_array_with_noise = (interp_velocity_array
+                                     + noise_amplitude*load_noise_array(seed))
+    else:
+        coordinate_points_new, output_array = create_noise_field(seed)
+        velocity_array_with_noise = (interp_velocity_array
+                                     + noise_amplitude*output_array)
     #print('Done with generating noise')
     for i, t in enumerate(t_list[1:]):
-        np.random.seed(seed=((seed+i) % 4294967295))
+        np.random.seed(seed=((seed+round(i*1e5)) % 4294967295))
         if (y[0]**2+y[1]**2) < (radius+1)**2 and -1*height-1 < y[2] < 1:
             y_old = y
             y = RK4_step(y, t, dt, seed, velocity_array_with_noise)\
@@ -78,9 +91,13 @@ def point_cloud(initial_points, time, dt):
     for i, point in enumerate(initial_points):
         map_list.append(np.array(point+[i]+time))
     map_f = partial(generate_path, dt)
+
+    total = len(initial_points)
+    print_progress(0, total)
     with Pool(threads) as p:
         output = []
-        for thing in p.imap(map_f, map_list):
+        for i, thing in enumerate(p.imap(map_f, map_list)):
+            print_progress(i+1, total)
             output.append(thing)
     return output
 
@@ -95,9 +112,12 @@ def point_cloud_tlist(initial_points, times, dt):
     for i, point in enumerate(initial_points):
         map_list.append(np.array(point+[i]+times[i]))
     map_f = partial(generate_path, dt)
+
+    total = len(initial_points)
+    print_progress(0, total)
     with Pool(threads) as p:
         output = []
-        for thing in p.imap(map_f, map_list):
+        for i, thing in enumerate(p.imap(map_f, map_list)):
             output.append(thing)
     return output
 
