@@ -16,11 +16,7 @@ interp_velocity_array = np.load('interp_velocity_array.npy')
 @jit
 def f(y, t, seed, dt, velocity_array_with_noise):
     #pylint: disable=unused-argument
-    '''Random seed is needed to make sure paths generated consistent
-    between calls; that is, if the integrator calls the same value of
-    f(t,y) twice it will get the same result.
-    This also means we can simply use the coords as a random seed,
-    plus some salt based on the particle's position in point cloud.'''
+    '''Derivative function'''
     if any(np.isnan(y).flatten()):
         return y
     coord_indices = interp_index_from_coord(y)

@@ -1,6 +1,6 @@
 '''Functions for generation and manipulation of divergence-free noise.'''
 import numpy as np
-import scipy
+import scipy.signal
 from numba import njit
 
 from radon_veto.config import *
