@@ -166,10 +166,13 @@ def generate_and_save_noise_arrays():
     based on relevant config file parameter.
     Please do not exceed 13, as I provisioned 4 digit file names only.
     As the symmetry group for a square cuboid is 16,
-    you should never need to exceed 13 anyway.'''
+    you should never need to exceed 13 anyway.
+
+    This uses half the number of cores used by the main propagation
+    code due to memory issues.'''
     total_number = 2**noise_arrays_n
     print('Progress: {}/{} \r'.format(0, total_number))
-    with Pool(threads) as p:
+    with Pool(threads//2) as p:
         for i, thing in enumerate(p.imap(create_noise_field, range(total_number))):
             np.save('noise_{:04d}'.format(i), thing[1])
             print('Progress: {}/{} \r'.format(i+1, total_number))
