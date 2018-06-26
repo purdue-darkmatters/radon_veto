@@ -13,5 +13,5 @@ def print_progress(i, total):
     '''Print pretty progress bar without needing tqdm'''
     frac = i/total
     sys.stdout.flush()
-    print('\r['+'█'*round(frac*40)+'—'*round((1-frac)*40)+
+    print('\r['+'@'*round(frac*40)+'-'*round((1-frac)*40)+
           '] {}/{}, {:.1%}'.format(i, total, frac), end='\r')
