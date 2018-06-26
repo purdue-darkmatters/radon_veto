@@ -40,11 +40,10 @@ posrec_sigma = [0.3, 0.3, 0.15]
 
 #There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
 
-radius = 47.9
-#radius = 48.5
-height = 96.9
-#height = 98
-liquid_level = 0.25
+#radius = 47.9
+radius = 48.5
+#height = 96.9
+height = 97.5
 
 subd = 6 #subdivisions for interpolation and noise generation
 
@@ -55,9 +54,7 @@ noise_arrays_n = 2 #2^n noise arrays
 noise_amplitude = 3e-11
 #noise_amplitude = 0
 
-use_static_arrays = True
-noise_only = False
-array_filename = 'interp_velocity_array.npy'
+use_static_arrays = False
 
 def interp_index_from_coord(coord):
     '''Get interpolated index from coordinate values'''
