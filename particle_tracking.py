@@ -13,7 +13,7 @@ from radon_veto.convenience_functions import *
 
 #To-do: make more functions run in no-python mode.
 
-interp_velocity_array = np.load('interp_velocity_array.npy')
+interp_velocity_array = np.load(array_filename)
 
 @jit
 def f(y, t, seed, dt, velocity_array_with_noise):
@@ -64,16 +64,17 @@ def generate_path(dt, y0_and_seed_and_tlims):
                   'resulted in some points seeing the same velocity fields.',
                   RuntimeWarning)
     if use_static_arrays:
-        velocity_array_with_noise = (interp_velocity_array
+        velocity_array_with_noise = ((1-noise_only)*interp_velocity_array
                                      + noise_amplitude*load_noise_array(seed))
     else:
         coordinate_points_new, output_array = create_noise_field(seed)
-        velocity_array_with_noise = (interp_velocity_array
+        velocity_array_with_noise = ((1-noise_only)*interp_velocity_array
                                      + noise_amplitude*output_array)
     #print('Done with generating noise')
     for i, t in enumerate(t_list[1:]):
         np.random.seed(seed=((seed+round(i*1e5)) % 4294967295))
-        if (y[0]**2+y[1]**2) < (radius+1)**2 and -1*height-1 < y[2] < 1:
+        if ((y[0]**2+y[1]**2) < (radius+1)**2
+                and -1*height-1 < y[2] < -1*liquid_level):
             y_old = y
             y = RK4_step(y, t, dt, seed, velocity_array_with_noise)\
                 +np.random.normal(scale=np.array([D_sigma, D_sigma, D_sigma]))
@@ -167,8 +168,8 @@ def remove_wall_points(points_in):
     '''Remove points that are outside the TPC volume.'''
     points = points_in.copy()
     for i, point in enumerate(points):
-        if ((point[1][-1][0]**2 + point[1][-1][1]**2 > (radius+0.5)**2)
-                or (point[1][-1][2] < -1*height-0.5)
-                or (point[1][-1][2] > 0)):
+        if ((point[1][-1][0]**2 + point[1][-1][1]**2 > (radius)**2)
+                or (point[1][-1][2] < -1*height)
+                or (point[1][-1][2] > -1*liquid_level)):
             points.pop(i)
     return points
