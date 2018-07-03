@@ -5,6 +5,7 @@ import warnings as warn
 
 import numpy as np
 from numba import jit, njit
+from scipy import spatial
 
 from radon_veto.noise_generation import *
 from radon_veto.config import *
@@ -164,12 +165,46 @@ def in_ellipsoid(mean, ellipsoid_matrix, point):
     r = np.matmul(np.matmul((point-mean), ellipsoid_matrix), (point-mean).T)
     return r
 
-def remove_wall_points(points_in):
+def remove_wall_points(points_in, j=-1):
     '''Remove points that are outside the TPC volume.'''
     points = points_in.copy()
-    for i, point in enumerate(points):
-        if ((point[1][-1][0]**2 + point[1][-1][1]**2 > (radius)**2)
-                or (point[1][-1][2] < -1*height)
-                or (point[1][-1][2] > -1*liquid_level)):
-            points.pop(i)
+    pop_list = []
+    for i, point in enumerate(points_in):
+        if ((point[1][j][0]**2 + point[1][j][1]**2 > (radius)**2)
+            or (point[1][j][2] < -1*height)
+            or (point[1][j][2] > -1*liquid_level)):
+            pop_list.append(i)
+    for i in range(len(pop_list)):
+        points.pop(pop_list[-1*(i+1)])
     return points
+
+def min_vol_hull(points, fraction):
+    '''Finds the approximate minimum volume convex hull that
+    contains a greater fraction of points than specified in the input.
+    point_cloud should be N by d, where d is the number of dimensions (3).'''
+
+    N = points.shape[1]
+    N_in = np.ceil(fraction*N).astype(int)
+    mean, _, _, mat = generate_ellipsoid_matrices(points, 3)
+    points = points.T
+    while points.shape[0] > N_in:
+        max_r = 0
+        max_i = 0
+        for i, point in enumerate(points):
+            r = in_ellipsoid(mean, mat, point)
+            if r > max_r:
+                max_r = r
+                max_i = i
+        points = np.delete(points, max_i, axis=0)
+    return point_cloud, spatial.ConvexHull(points)
+
+def point_in_hull(hull, point):
+    '''creates a new hull with point added,
+    and checks to see if it has the same volume as the previous one.
+    This is a dumb method but it works.'''
+
+    new_point_cloud = np.concatenate((hull.points, [point]), 0)
+    new_hull = spatial.ConvexHull(new_point_cloud)
+    print(hull.volume)
+    print(new_hull.volume)
+    return bool(abs(hull.volume-new_hull.volume) < tol)
