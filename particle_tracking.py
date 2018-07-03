@@ -73,8 +73,8 @@ def generate_path(dt, y0_and_seed_and_tlims):
     #print('Done with generating noise')
     for i, t in enumerate(t_list[1:]):
         np.random.seed(seed=((seed+round(i*1e5)) % 4294967295))
-        if ((y[0]**2+y[1]**2) < (radius+1)**2
-                and -1*height-1 < y[2] < -1*liquid_level):
+        if ((y[0]**2+y[1]**2) < (radius)**2
+                and -1*height < y[2] < -1*liquid_level):
             y_old = y
             y = RK4_step(y, t, dt, seed, velocity_array_with_noise)\
                 +np.random.normal(scale=np.array([D_sigma, D_sigma, D_sigma]))

@@ -36,7 +36,7 @@ def index_from_coord_float(coord, grids, lim_box):
 threads = 2
 timestep = 5e7
 
-posrec_sigma = [0.3, 0.3, 0.15]
+posrec_sigma = [1.34, 1.33, 0.17]
 
 #There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
 
@@ -54,6 +54,8 @@ diffusion_constant = 5.95e-15 #cm^s/ns
 noise_arrays_n = 2 #2^n noise arrays
 noise_amplitude = 3e-11
 #noise_amplitude = 0
+
+tol = 0.01 #tolerance for convex hull equivalence checking.
 
 use_static_arrays = True
 noise_only = False
