@@ -36,7 +36,7 @@ def index_from_coord_float(coord, grids, lim_box):
 threads = 2
 timestep = 5e7
 
-posrec_sigma = [1.34, 1.33, 0.17]
+posrec_sigma = [0.3, 0.3, 0.4]
 
 #There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
 
