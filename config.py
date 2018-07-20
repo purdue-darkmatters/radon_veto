@@ -59,6 +59,7 @@ tol = 0.01 #tolerance for convex hull equivalence checking.
 
 use_static_arrays = True
 noise_only = False
+invert_velocities = False
 array_filename = 'interp_velocity_array.npy'
 
 def interp_index_from_coord(coord):

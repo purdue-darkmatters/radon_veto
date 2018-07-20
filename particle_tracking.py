@@ -16,6 +16,9 @@ from radon_veto.convenience_functions import *
 
 interp_velocity_array = np.load(array_filename)
 
+if invert_velocities:
+    interp_velocity_array = interp_velocity_array*(-1)
+
 @jit
 def f(y, t, seed, dt, velocity_array_with_noise):
     #pylint: disable=unused-argument
@@ -231,13 +234,25 @@ def point_in_hull(hull, point):
     new_hull = spatial.ConvexHull(new_point_cloud)
     return bool(abs(hull.volume-new_hull.volume) < tol)
 
-def check_if_event_in_hull(points_np, start_time, fraction, prefix, row_le):
+def fraction_of_points(t, ld):
+    '''function for fraction of points to keep'''
+    return np.exp(-2*t*ld)*0.9
+
+def check_if_event_in_hull(points_np, start_time, prefix, halflife, row_le):
     '''check if dataframe row (series) of low energy events is in hull'''
     t_index = int((row_le[1]['event_time']
-                   - start_time + timestep/2)//timestep)
+                    - start_time + timestep/2)//timestep)
     pointcloud = remove_wall_points_pointcloud(points_np[1][t_index])
-    if pointcloud.shape[1] > 3:
-        hull = min_vol_hull(pointcloud, fraction)
+    fraction = fraction_of_points(row_le[1]['event_time'] - start_time,
+                                  np.log(2)/halflife)
+    if pointcloud.shape[1]*fraction > 3:
+        try:
+            hull = min_vol_hull(pointcloud, fraction)
+        except spatial.qhull.QhullError:
+            warn.warn('QHull Error encountered', RuntimeWarning)
+            return (row_le[1]['event_number'],
+                    row_le[1]['run_number'],
+                    False)
         return (row_le[1]['event_number'],
                 row_le[1]['run_number'],
                 point_in_hull(hull,
@@ -251,15 +266,14 @@ def check_if_event_in_hull(points_np, start_time, fraction, prefix, row_le):
                 row_le[1]['run_number'],
                 False)
 
-def check_if_events_in_hull(points, events_dataframe, start_time, prefix=''):
+def check_if_events_in_hull(points, events_dataframe, start_time,
+                            halflife, prefix=''):
     '''check if dataframe of low energy events is in hull'''
-    fraction = 0.8 #this should be changed into a function of time.
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
-
     input_array = []
     points_np = generate_np_array_list_from_points(points)
-    map_f = partial(check_if_event_in_hull,
-                    points_np, start_time, fraction, prefix)
+    map_f = partial(check_if_event_in_hull, points_np, start_time,
+                    prefix, halflife)
     for row_le in events_dataframe.iterrows():
         input_array.append(row_le)
     with Pool(threads) as p:
