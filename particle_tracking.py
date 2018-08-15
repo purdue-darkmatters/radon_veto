@@ -195,8 +195,8 @@ def remove_wall_points(points_in, j=-1):
     return points
 
 def remove_wall_points_pointcloud(pointcloud):
-    '''same as remove_wall_points, but acts on a single 3D pointcloud instead
-    of a 3D+time series.'''
+    '''same as remove_wall_points, but acts on a single 3D pointcloud
+    instead of a 3D+time series.'''
     del_i = []
     for i, point in enumerate(pointcloud.T):
         if ((point[0]**2 + point[1]**2 > (radius)**2)
@@ -236,12 +236,16 @@ def point_in_hull(hull, point):
 
 def fraction_of_points(t, ld):
     '''function for fraction of points to keep'''
-    return np.exp(-2*t*ld)*0.9
+    return np.exp(-3*t*ld)*0.8
 
 def check_if_event_in_hull(points_np, start_time, prefix, halflife, row_le):
     '''check if dataframe row (series) of low energy events is in hull'''
-    t_index = int((row_le[1]['event_time']
-                    - start_time + timestep/2)//timestep)
+    if invert_time:
+        t_index = int((start_time
+                       - row_le[1]['event_time'] + timestep/2)//timestep)
+    else:
+        t_index = int((row_le[1]['event_time']
+                       - start_time + timestep/2)//timestep)
     pointcloud = remove_wall_points_pointcloud(points_np[1][t_index])
     fraction = fraction_of_points(row_le[1]['event_time'] - start_time,
                                   np.log(2)/halflife)
@@ -250,6 +254,12 @@ def check_if_event_in_hull(points_np, start_time, prefix, halflife, row_le):
             hull = min_vol_hull(pointcloud, fraction)
         except spatial.qhull.QhullError:
             warn.warn('QHull Error encountered', RuntimeWarning)
+            return (row_le[1]['event_number'],
+                    row_le[1]['run_number'],
+                    False)
+        except ValueError:
+            warn.warn('Value Error encountered', RuntimeWarning)
+            print(pointcloud)
             return (row_le[1]['event_number'],
                     row_le[1]['run_number'],
                     False)

@@ -61,6 +61,8 @@ use_static_arrays = True
 noise_only = False
 invert_velocities = False
 array_filename = 'interp_velocity_array.npy'
+invert_time = False #This only inverts searching of events;
+#velocity should also be inverted for this to make sense.
 
 def interp_index_from_coord(coord):
     '''Get interpolated index from coordinate values'''
