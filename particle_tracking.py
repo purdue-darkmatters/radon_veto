@@ -249,7 +249,7 @@ def check_if_event_in_hull(points_np, start_time, prefix, halflife, row_le):
     pointcloud = remove_wall_points_pointcloud(points_np[1][t_index])
     fraction = fraction_of_points(row_le[1]['event_time'] - start_time,
                                   np.log(2)/halflife)
-    if pointcloud.shape[1]*fraction > 3:
+    if pointcloud.shape[1]*fraction > 4:
         try:
             hull = min_vol_hull(pointcloud, fraction)
         except spatial.qhull.QhullError:
