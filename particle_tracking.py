@@ -5,7 +5,10 @@ import warnings as warn
 
 import numpy as np
 from numba import jit, njit
+import pandas as pd
 from scipy import spatial
+from sklearn.neighbors.kde import KernelDensity
+from sklearn.cluster import DBSCAN
 
 from radon_veto.noise_generation import *
 from radon_veto.config import *
@@ -295,4 +298,104 @@ def check_if_events_in_hull(points, events_dataframe, start_time,
             output['run_number'].append(thing[1][1])
             output['in_veto_volume'].append(thing[1][2])
 
+    return output
+
+def pb214_decay(t):
+    '''exponential decay of pb214'''
+    return (1/2)**(t/(1e9*26.8*60))
+
+def kde_likelihood(data_arr_nowall):
+    '''Add likelihood based on KDE to each data point'''
+    kde_fit = KernelDensity(kernel='tophat',
+                            bandwidth=kernel_radius).fit(data_arr_nowall)
+    data_arr_scores = np.zeros([data_arr_nowall.shape[0]],
+                               dtype=[('x', np.double),
+                                      ('y', np.double),
+                                      ('z', np.double),
+                                      ('t', np.double),
+                                      ('score', np.double)])
+    data_arr_scores['score'] = kde_score(kde_fit, data_arr_nowall)
+    data_arr_scores['x'] = data_arr_nowall[:, 0]
+    data_arr_scores['y'] = data_arr_nowall[:, 1]
+    data_arr_scores['z'] = data_arr_nowall[:, 2]
+    data_arr_scores['t'] = data_arr_nowall[:, 3]
+    data_arr_scores['score'] += np.log(pb214_decay(data_arr_scores['t']*2*timestep))
+    data_arr_scores.sort(axis=0, order='score')
+    return data_arr_scores
+
+def data_arr_from_points(points):
+    '''Convert list of points into array structure for clustering'''
+    number_of_data_points = len(points)*len(points[0][0])
+    data_arr = np.zeros((number_of_data_points, 4), dtype=np.double)
+    for i, point in enumerate(points):
+        rownum = (i*len(points[0][0]), i*len(points[0][0])+len(points[0][0]))
+        data_arr[rownum[0]:rownum[1], :3] = np.array(point[1])
+        data_arr[rownum[0]:rownum[1], 3] = point[0]/(2*timestep)
+    return data_arr
+
+def kde_score(kde_fit, data_arr_nowall):
+    '''Get likelihood of every point using multiple cores/processors'''
+    chunks = threads*3
+    map_list = []
+    chunksize = data_arr_nowall.shape[0]//(chunks-1)
+    for i in range(chunks):
+        map_list.append(data_arr_nowall[i*chunksize: (i+1)*chunksize])
+    with Pool(threads) as p:
+        output = []
+        for i, thing in enumerate(p.map(kde_fit.score_samples, map_list)):
+            output.append(thing)
+    return np.concatenate(output)
+
+@njit
+def remove_wall_points_np(data_arr):
+    '''remove wall points of array in clustering format'''
+    data_arr_out = np.zeros_like(data_arr)
+    i = 0
+    for j in range(data_arr.shape[0]):
+        row = data_arr[j, :]
+        if (row[0]**2+row[1]**2 < radius**2 and
+                row[2] > -height and
+                row[2] < -liquid_level):
+            data_arr_out[i] = row
+            i += 1
+    return data_arr_out[:i]
+
+def check_if_events_in_cluster(points, events, event_time):
+    '''check if a list of events are in the 4D cluster.'''
+    data_arr = data_arr_from_points(points)
+    data_arr_scores = kde_likelihood(remove_wall_points_np(data_arr))
+    data_arr_selected = data_arr_scores[-len(data_arr_scores)//n_selection:]
+    db = DBSCAN(eps=DBSCAN_radius,
+                min_samples=DBSCAN_samples, )\
+                .fit(pd.DataFrame(data_arr_selected).values[:, :4])
+    data_arr_cluster = np.zeros(data_arr_selected.shape,
+                                dtype=[('x', np.double),
+                                       ('y', np.double),
+                                       ('z', np.double),
+                                       ('t', np.double),
+                                       ('score', np.double),
+                                       ('label', int)])
+    data_arr_cluster['x'] = data_arr_selected['x']
+    data_arr_cluster['y'] = data_arr_selected['y']
+    data_arr_cluster['z'] = data_arr_selected['z']
+    data_arr_cluster['t'] = data_arr_selected['t']
+    data_arr_cluster['score'] = data_arr_selected['score']
+    data_arr_cluster['label'] = db.labels_
+    data_arr_df = pd.DataFrame(data_arr_cluster)
+    data_wo_outliers = data_arr_df.query('label != -1').values[:, :4]
+    selected_fit = KernelDensity(kernel='tophat',
+                                 bandwidth=kernel_radius).fit(data_wo_outliers)
+    output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
+    for row in events.iterrows():
+        if not invert_time:
+            t = (row[1].event_time - event_time)/(2*timestep)
+        else:
+            t = -(row[1].event_time - event_time)/(2*timestep)
+        score = selected_fit.score([[row[1].x_3d_nn,
+                                     row[1].y_3d_nn,
+                                     row[1].z_3d_nn,
+                                     t]])
+        output['event_number'].append(row[1].event_number)
+        output['run_number'].append(row[1].run_number)
+        output['in_veto_volume'].append(not score == -np.inf)
     return output

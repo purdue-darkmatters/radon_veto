@@ -51,7 +51,7 @@ subd = 6 #subdivisions for interpolation and noise generation
 diffusion_constant = 5.95e-15 #cm^s/ns
 #diffusion_constant = 1e-25 #cm^s/ns
 
-noise_arrays_n = 2 #2^n noise arrays
+noise_arrays_n = 4 #2^n noise arrays
 noise_amplitude = 3e-11
 #noise_amplitude = 0
 
@@ -59,10 +59,16 @@ tol = 0.01 #tolerance for convex hull equivalence checking.
 
 use_static_arrays = True
 noise_only = False
-invert_velocities = False
+invert_velocities = True
 array_filename = 'interp_velocity_array.npy'
-invert_time = False #This only inverts searching of events;
+invert_time = invert_velocities #This only inverts searching of events;
 #velocity should also be inverted for this to make sense.
+
+#clustering parameters
+kernel_radius = 3
+DBSCAN_radius = kernel_radius
+DBSCAN_samples = 13
+n_selection = 5 #1/n_selection points would be used
 
 def interp_index_from_coord(coord):
     '''Get interpolated index from coordinate values'''
