@@ -89,6 +89,8 @@ def generate_path(dt, y0_and_seed_and_tlims):
             y = RK4_step(y, t, dt, seed, velocity_array_with_noise)\
                 +np.random.normal(scale=np.array([D_sigma, D_sigma, D_sigma]))
             if any(np.isnan(y).flatten()):
+                warn.warn('Nan encountered: ' +
+                          'y = {}'.format(y_old), RuntimeWarning)
                 y = y_old
         out_list.append(y)
     return t_list, out_list
