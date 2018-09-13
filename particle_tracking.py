@@ -341,12 +341,16 @@ def kde_score(kde_fit, data_arr_nowall):
     map_list = []
     chunksize = data_arr_nowall.shape[0]//(chunks-1)
     for i in range(chunks):
-        map_list.append(data_arr_nowall[i*chunksize: (i+1)*chunksize])
+        chunk = data_arr_nowall[i*chunksize: (i+1)*chunksize]
+        if chunk.shape[0]:
+            map_list.append(data_arr_nowall[i*chunksize: (i+1)*chunksize])
     with Pool(threads) as p:
         output = []
         for i, thing in enumerate(p.map(kde_fit.score_samples, map_list)):
             output.append(thing)
-    return np.concatenate(output)
+    if len(output) > 1:
+        return np.concatenate(output)
+    return output[0]
 
 @njit
 def remove_wall_points_np(data_arr):
@@ -364,8 +368,20 @@ def remove_wall_points_np(data_arr):
 
 def check_if_events_in_cluster(points, events, event_time):
     '''check if a list of events are in the 4D cluster.'''
-    data_arr = data_arr_from_points(points)
-    data_arr_scores = kde_likelihood(remove_wall_points_np(data_arr))
+    output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
+    data_arr_nowall = remove_wall_points_np(data_arr_from_points(points))
+    #print(data_arr_nowall.shape)
+    if not data_arr_nowall.shape[0]:
+        warn.warn('No points left in cluster after removing wall points',
+                  RuntimeWarning)
+        for row in events.iterrows():
+            output['event_number'].append(row[1].event_number)
+            output['run_number'].append(row[1].run_number)
+            output['in_veto_volume'].append(False)
+        return output
+    if events.empty:
+        return output
+    data_arr_scores = kde_likelihood(data_arr_nowall)
     data_arr_selected = data_arr_scores[-len(data_arr_scores)//n_selection:]
     db = DBSCAN(eps=DBSCAN_radius,
                 min_samples=DBSCAN_samples, )\
@@ -387,7 +403,6 @@ def check_if_events_in_cluster(points, events, event_time):
     data_wo_outliers = data_arr_df.query('label != -1').values[:, :4]
     selected_fit = KernelDensity(kernel='tophat',
                                  bandwidth=kernel_radius).fit(data_wo_outliers)
-    output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
     for row in events.iterrows():
         if not invert_time:
             t = (row[1].event_time - event_time)/(2*timestep)
