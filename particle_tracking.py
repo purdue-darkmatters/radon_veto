@@ -4,7 +4,7 @@ from functools import partial
 import warnings as warn
 
 import numpy as np
-from numba import jit, njit
+from numba import njit
 import pandas as pd
 from scipy import spatial
 from sklearn.neighbors.kde import KernelDensity
@@ -22,20 +22,25 @@ interp_velocity_array = np.load(array_filename)
 if invert_velocities:
     interp_velocity_array = interp_velocity_array*(-1)
 
-@jit
+@njit
 def f(y, t, seed, dt, velocity_array_with_noise):
     #pylint: disable=unused-argument
     '''Derivative function'''
-    if any(np.isnan(y).flatten()):
+    if np.sum(np.isnan(y).flatten()):
         return y
     coord_indices = interp_index_from_coord(y)
-    coord_indices2 = []
-    if (coord_indices < np.array([300, 300, 300])).all():
+    coord_indices2 = [1]
+    coord_indices2.pop()
+    g = gridsize[0]
+    if coord_indices[0] < (limit_box[0][1]-limit_box[0][0])/(g/subd) and \
+        coord_indices[1] < (limit_box[1][1]-limit_box[1][0])/(g/subd) and \
+        coord_indices[2] < (limit_box[2][1]-limit_box[2][0])/(g/subd):
         v = velocity_array_with_noise[coord_indices[0],
                                       coord_indices[1],
                                       coord_indices[2], :]
     else:
-        print('Warning: exceeded bounding box at {}'.format(y))
+        print('Warning: exceeded bounding box at: ')
+        print(y)
         for i, coord in enumerate(coord_indices):
             coord_indices2.append(min(coord,
                                       velocity_array_with_noise.shape[i]-1))
@@ -45,7 +50,7 @@ def f(y, t, seed, dt, velocity_array_with_noise):
 
     return v
 
-@jit
+@njit
 def RK4_step(y, t, dt, seed, velocity_array_with_noise):
     '''function representing RK4 step'''
     k1 = dt*f(y, t, seed, dt, velocity_array_with_noise)
@@ -89,8 +94,7 @@ def generate_path(dt, y0_and_seed_and_tlims):
             y = RK4_step(y, t, dt, seed, velocity_array_with_noise)\
                 +np.random.normal(scale=np.array([D_sigma, D_sigma, D_sigma]))
             if any(np.isnan(y).flatten()):
-                warn.warn('Nan encountered: ' +
-                          'y = {}'.format(y_old), RuntimeWarning)
+                warn.warn('Nan encountered', RuntimeWarning)
                 y = y_old
         out_list.append(y)
     return t_list, out_list
@@ -277,12 +281,12 @@ def check_if_event_in_hull(points_np, start_time, prefix, halflife, row_le):
                               [row_le[1][prefix + 'x_3d_nn'],
                                row_le[1][prefix + 'y_3d_nn'],
                                row_le[1][prefix + 'z_3d_nn']]))
-    else:
-        warn.warn('Not enough points for convex'
-                  'hull after removal of wall points.', RuntimeWarning)
-        return (row_le[1]['event_number'],
-                row_le[1]['run_number'],
-                False)
+
+    warn.warn('Not enough points for convex'
+              'hull after removal of wall points.', RuntimeWarning)
+    return (row_le[1]['event_number'],
+            row_le[1]['run_number'],
+            False)
 
 def check_if_events_in_hull(points, events_dataframe, start_time,
                             halflife, prefix=''):

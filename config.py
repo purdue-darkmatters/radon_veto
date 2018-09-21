@@ -1,8 +1,9 @@
 '''config file and convenience functions for radon_veto module'''
 import numpy as np
+from numba import njit
 
-gridsize = [2, 2, 1]
-limit_box = [(-50, 50), (-50, 50), (-100, 0)]
+gridsize = np.array([2, 2, 1])
+limit_box = np.array([[-50, 50], [-50, 50], [-100, 0]])
 steps = (int(np.ceil((limit_box[0][1]-limit_box[0][0])/(gridsize[0]))),
          int(np.ceil((limit_box[1][1]-limit_box[1][0])/(gridsize[1]))),
          int(np.ceil((limit_box[2][1]-limit_box[2][0])/(gridsize[2]))))
@@ -11,21 +12,21 @@ x_list = np.linspace(limit_box[0][0]+gridsize[0]/2, limit_box[0][1]-gridsize[0]/
 y_list = np.linspace(limit_box[1][0]+gridsize[1]/2, limit_box[1][1]-gridsize[1]/2, steps[1])
 z_list = np.linspace(limit_box[2][0]+gridsize[2]/2, limit_box[2][1]-gridsize[2]/2, steps[2])
 
-
+@njit
 def coord_from_index(index, grids, lim_box):
     '''Get coordinate values from indices'''
     return (grids[0]*index[0]+grids[0]/2+lim_box[0][0],
             grids[1]*index[1]+grids[1]/2+lim_box[1][0],
             grids[2]*index[2]+grids[2]/2+lim_box[2][0])
 
-
+@njit
 def index_from_coord(coord, grids, lim_box):
     '''Get indices from coordinate values'''
     return (int(np.floor((coord[0]-lim_box[0][0])/grids[0])),
             int(np.floor((coord[1]-lim_box[1][0])/grids[1])),
             int(np.floor((coord[2]-lim_box[2][0])/grids[2])))
 
-
+@njit
 def index_from_coord_float(coord, grids, lim_box):
     '''Get indices from coordinate values without rounding to integers'''
     return ((coord[0]-lim_box[0][0])/grids[0]-0.5,
@@ -70,6 +71,7 @@ DBSCAN_radius = kernel_radius
 DBSCAN_samples = 13
 n_selection = 5 #1/n_selection points would be used
 
+@njit
 def interp_index_from_coord(coord):
     '''Get interpolated index from coordinate values'''
     return (int(np.floor((coord[0]-limit_box[0][0])/(gridsize[0]/subd))),
