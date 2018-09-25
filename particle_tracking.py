@@ -99,7 +99,7 @@ def generate_path(dt, y0_and_seed_and_tlims):
         out_list.append(y)
     return t_list, out_list
 
-def point_cloud(initial_points, time, dt, progressbar=True):
+def point_cloud(initial_points, time, dt, progressbar=True, multiprocess=True):
     '''Generate a point cloud given initial points,
     start and end time tuple, and timestep.
     Output format is a list of numpy arrays.
@@ -113,14 +113,21 @@ def point_cloud(initial_points, time, dt, progressbar=True):
     map_f = partial(generate_path, dt)
 
     total = len(initial_points)
+    output = []
     if progressbar:
         print_progress(0, total)
-    with Pool(threads) as p:
-        output = []
-        for i, thing in enumerate(p.imap(map_f, map_list)):
+    if multiprocess:
+        with Pool(threads) as p:
+            for i, thing in enumerate(p.imap(map_f, map_list)):
+                if progressbar:
+                    print_progress(i+1, total)
+                output.append(thing)
+    else:
+        for i, thing in enumerate(map(map_f, map_list)):
             if progressbar:
                 print_progress(i+1, total)
             output.append(thing)
+
     return output
 
 def point_cloud_tlist(initial_points, times, dt, progressbar=True):
@@ -310,7 +317,7 @@ def pb214_decay(t):
     '''exponential decay of pb214'''
     return (1/2)**(t/(1e9*26.8*60))
 
-def kde_likelihood(data_arr_nowall):
+def kde_likelihood(data_arr_nowall, multiprocess=True):
     '''Add likelihood based on KDE to each data point'''
     kde_fit = KernelDensity(kernel='tophat',
                             bandwidth=kernel_radius).fit(data_arr_nowall)
@@ -320,7 +327,7 @@ def kde_likelihood(data_arr_nowall):
                                       ('z', np.double),
                                       ('t', np.double),
                                       ('score', np.double)])
-    data_arr_scores['score'] = kde_score(kde_fit, data_arr_nowall)
+    data_arr_scores['score'] = kde_score(kde_fit, data_arr_nowall, multiprocess=multiprocess)
     data_arr_scores['x'] = data_arr_nowall[:, 0]
     data_arr_scores['y'] = data_arr_nowall[:, 1]
     data_arr_scores['z'] = data_arr_nowall[:, 2]
@@ -339,8 +346,10 @@ def data_arr_from_points(points):
         data_arr[rownum[0]:rownum[1], 3] = point[0]/(2*timestep)
     return data_arr
 
-def kde_score(kde_fit, data_arr_nowall):
+def kde_score(kde_fit, data_arr_nowall, multiprocess=True):
     '''Get likelihood of every point using multiple cores/processors'''
+    if not multiprocess:
+        return kde_fit.score_samples(data_arr_nowall)
     chunks = threads*3
     map_list = []
     chunksize = data_arr_nowall.shape[0]//(chunks-1)
@@ -370,7 +379,9 @@ def remove_wall_points_np(data_arr):
             i += 1
     return data_arr_out[:i]
 
-def check_if_events_in_cluster(points, events, event_time):
+def check_if_events_in_cluster(points, events, event_time,
+                               n_selection=n_selection):
+    #pylint: disable=redefined-outer-name
     '''check if a list of events are in the 4D cluster.'''
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
     data_arr_nowall = remove_wall_points_np(data_arr_from_points(points))
@@ -388,7 +399,7 @@ def check_if_events_in_cluster(points, events, event_time):
     data_arr_scores = kde_likelihood(data_arr_nowall)
     data_arr_selected = data_arr_scores[-len(data_arr_scores)//n_selection:]
     db = DBSCAN(eps=DBSCAN_radius,
-                min_samples=DBSCAN_samples, )\
+                min_samples=DBSCAN_samples)\
                 .fit(pd.DataFrame(data_arr_selected).values[:, :4])
     data_arr_cluster = np.zeros(data_arr_selected.shape,
                                 dtype=[('x', np.double),

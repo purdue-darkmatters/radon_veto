@@ -59,7 +59,7 @@ noise_amplitude = 3e-11
 tol = 0.01 #tolerance for convex hull equivalence checking.
 
 use_static_arrays = True
-noise_only = False
+noise_only = True
 invert_velocities = True
 array_filename = 'interp_velocity_array.npy'
 invert_time = invert_velocities #This only inverts searching of events;
