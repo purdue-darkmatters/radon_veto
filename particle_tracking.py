@@ -327,12 +327,14 @@ def kde_likelihood(data_arr_nowall, multiprocess=True):
                                       ('z', np.double),
                                       ('t', np.double),
                                       ('score', np.double)])
-    data_arr_scores['score'] = kde_score(kde_fit, data_arr_nowall, multiprocess=multiprocess)
+    data_arr_scores['score'] = kde_score(kde_fit, data_arr_nowall,
+                                         multiprocess=multiprocess)
     data_arr_scores['x'] = data_arr_nowall[:, 0]
     data_arr_scores['y'] = data_arr_nowall[:, 1]
     data_arr_scores['z'] = data_arr_nowall[:, 2]
     data_arr_scores['t'] = data_arr_nowall[:, 3]
-    data_arr_scores['score'] += np.log(pb214_decay(data_arr_scores['t']*2*timestep))
+    data_arr_scores['score'] += \
+        np.log(pb214_decay(data_arr_scores['t']*2*timestep))
     data_arr_scores.sort(axis=0, order='score')
     return data_arr_scores
 
@@ -380,7 +382,7 @@ def remove_wall_points_np(data_arr):
     return data_arr_out[:i]
 
 def check_if_events_in_cluster(points, events, event_time,
-                               n_selection=n_selection):
+                               n_selection=n_selection, multiprocess=True):
     #pylint: disable=redefined-outer-name
     '''check if a list of events are in the 4D cluster.'''
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
@@ -396,7 +398,7 @@ def check_if_events_in_cluster(points, events, event_time,
         return output
     if events.empty:
         return output
-    data_arr_scores = kde_likelihood(data_arr_nowall)
+    data_arr_scores = kde_likelihood(data_arr_nowall, multiprocess=multiprocess)
     data_arr_selected = data_arr_scores[-len(data_arr_scores)//n_selection:]
     db = DBSCAN(eps=DBSCAN_radius,
                 min_samples=DBSCAN_samples)\
