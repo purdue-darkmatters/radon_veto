@@ -4,8 +4,11 @@ from functools import partial
 import warnings as warn
 
 import numpy as np
-from numba import jit, njit
+from numba import njit
+import pandas as pd
 from scipy import spatial
+from sklearn.neighbors.kde import KernelDensity
+from sklearn.cluster import DBSCAN
 
 from radon_veto.noise_generation import *
 from radon_veto.config import *
@@ -19,20 +22,25 @@ interp_velocity_array = np.load(array_filename)
 if invert_velocities:
     interp_velocity_array = interp_velocity_array*(-1)
 
-@jit
+@njit
 def f(y, t, seed, dt, velocity_array_with_noise):
     #pylint: disable=unused-argument
     '''Derivative function'''
-    if any(np.isnan(y).flatten()):
+    if np.sum(np.isnan(y).flatten()):
         return y
     coord_indices = interp_index_from_coord(y)
-    coord_indices2 = []
-    if (coord_indices < np.array([300, 300, 300])).all():
+    coord_indices2 = [1]
+    coord_indices2.pop()
+    g = gridsize[0]
+    if coord_indices[0] < (limit_box[0][1]-limit_box[0][0])/(g/subd) and \
+        coord_indices[1] < (limit_box[1][1]-limit_box[1][0])/(g/subd) and \
+        coord_indices[2] < (limit_box[2][1]-limit_box[2][0])/(g/subd):
         v = velocity_array_with_noise[coord_indices[0],
                                       coord_indices[1],
                                       coord_indices[2], :]
     else:
-        print('Warning: exceeded bounding box at {}'.format(y))
+        print('Warning: exceeded bounding box at: ')
+        print(y)
         for i, coord in enumerate(coord_indices):
             coord_indices2.append(min(coord,
                                       velocity_array_with_noise.shape[i]-1))
@@ -42,7 +50,7 @@ def f(y, t, seed, dt, velocity_array_with_noise):
 
     return v
 
-@jit
+@njit
 def RK4_step(y, t, dt, seed, velocity_array_with_noise):
     '''function representing RK4 step'''
     k1 = dt*f(y, t, seed, dt, velocity_array_with_noise)
@@ -86,11 +94,12 @@ def generate_path(dt, y0_and_seed_and_tlims):
             y = RK4_step(y, t, dt, seed, velocity_array_with_noise)\
                 +np.random.normal(scale=np.array([D_sigma, D_sigma, D_sigma]))
             if any(np.isnan(y).flatten()):
+                warn.warn('Nan encountered', RuntimeWarning)
                 y = y_old
         out_list.append(y)
     return t_list, out_list
 
-def point_cloud(initial_points, time, dt, progressbar=True):
+def point_cloud(initial_points, time, dt, progressbar=True, multiprocess=True):
     '''Generate a point cloud given initial points,
     start and end time tuple, and timestep.
     Output format is a list of numpy arrays.
@@ -104,14 +113,21 @@ def point_cloud(initial_points, time, dt, progressbar=True):
     map_f = partial(generate_path, dt)
 
     total = len(initial_points)
+    output = []
     if progressbar:
         print_progress(0, total)
-    with Pool(threads) as p:
-        output = []
-        for i, thing in enumerate(p.imap(map_f, map_list)):
+    if multiprocess:
+        with Pool(threads) as p:
+            for i, thing in enumerate(p.imap(map_f, map_list)):
+                if progressbar:
+                    print_progress(i+1, total)
+                output.append(thing)
+    else:
+        for i, thing in enumerate(map(map_f, map_list)):
             if progressbar:
                 print_progress(i+1, total)
             output.append(thing)
+
     return output
 
 def point_cloud_tlist(initial_points, times, dt, progressbar=True):
@@ -272,12 +288,12 @@ def check_if_event_in_hull(points_np, start_time, prefix, halflife, row_le):
                               [row_le[1][prefix + 'x_3d_nn'],
                                row_le[1][prefix + 'y_3d_nn'],
                                row_le[1][prefix + 'z_3d_nn']]))
-    else:
-        warn.warn('Not enough points for convex'
-                  'hull after removal of wall points.', RuntimeWarning)
-        return (row_le[1]['event_number'],
-                row_le[1]['run_number'],
-                False)
+
+    warn.warn('Not enough points for convex'
+              'hull after removal of wall points.', RuntimeWarning)
+    return (row_le[1]['event_number'],
+            row_le[1]['run_number'],
+            False)
 
 def check_if_events_in_hull(points, events_dataframe, start_time,
                             halflife, prefix=''):
@@ -295,4 +311,125 @@ def check_if_events_in_hull(points, events_dataframe, start_time,
             output['run_number'].append(thing[1][1])
             output['in_veto_volume'].append(thing[1][2])
 
+    return output
+
+def pb214_decay(t):
+    '''exponential decay of pb214'''
+    return (1/2)**(t/(1e9*26.8*60))
+
+def kde_likelihood(data_arr_nowall, multiprocess=True):
+    '''Add likelihood based on KDE to each data point'''
+    kde_fit = KernelDensity(kernel='tophat',
+                            bandwidth=kernel_radius).fit(data_arr_nowall)
+    data_arr_scores = np.zeros([data_arr_nowall.shape[0]],
+                               dtype=[('x', np.double),
+                                      ('y', np.double),
+                                      ('z', np.double),
+                                      ('t', np.double),
+                                      ('score', np.double)])
+    data_arr_scores['score'] = kde_score(kde_fit, data_arr_nowall,
+                                         multiprocess=multiprocess)
+    data_arr_scores['x'] = data_arr_nowall[:, 0]
+    data_arr_scores['y'] = data_arr_nowall[:, 1]
+    data_arr_scores['z'] = data_arr_nowall[:, 2]
+    data_arr_scores['t'] = data_arr_nowall[:, 3]
+    data_arr_scores['score'] += \
+        np.log(pb214_decay(data_arr_scores['t']*2*timestep))
+    data_arr_scores.sort(axis=0, order='score')
+    return data_arr_scores
+
+def data_arr_from_points(points):
+    '''Convert list of points into array structure for clustering'''
+    number_of_data_points = len(points)*len(points[0][0])
+    data_arr = np.zeros((number_of_data_points, 4), dtype=np.double)
+    for i, point in enumerate(points):
+        rownum = (i*len(points[0][0]), i*len(points[0][0])+len(points[0][0]))
+        data_arr[rownum[0]:rownum[1], :3] = np.array(point[1])
+        data_arr[rownum[0]:rownum[1], 3] = point[0]/(2*timestep)
+    return data_arr
+
+def kde_score(kde_fit, data_arr_nowall, multiprocess=True):
+    '''Get likelihood of every point using multiple cores/processors'''
+    if not multiprocess:
+        return kde_fit.score_samples(data_arr_nowall)
+    chunks = threads*3
+    map_list = []
+    chunksize = data_arr_nowall.shape[0]//(chunks-1)
+    for i in range(chunks):
+        chunk = data_arr_nowall[i*chunksize: (i+1)*chunksize]
+        if chunk.shape[0]:
+            map_list.append(data_arr_nowall[i*chunksize: (i+1)*chunksize])
+    with Pool(threads) as p:
+        output = []
+        for i, thing in enumerate(p.map(kde_fit.score_samples, map_list)):
+            output.append(thing)
+    if len(output) > 1:
+        return np.concatenate(output)
+    return output[0]
+
+@njit
+def remove_wall_points_np(data_arr):
+    '''remove wall points of array in clustering format'''
+    data_arr_out = np.zeros_like(data_arr)
+    i = 0
+    for j in range(data_arr.shape[0]):
+        row = data_arr[j, :]
+        if (row[0]**2+row[1]**2 < radius**2 and
+                row[2] > -height and
+                row[2] < -liquid_level):
+            data_arr_out[i] = row
+            i += 1
+    return data_arr_out[:i]
+
+def check_if_events_in_cluster(points, events, event_time,
+                               n_selection=n_selection, multiprocess=True):
+    #pylint: disable=redefined-outer-name
+    '''check if a list of events are in the 4D cluster.'''
+    output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
+    data_arr_nowall = remove_wall_points_np(data_arr_from_points(points))
+    #print(data_arr_nowall.shape)
+    if not data_arr_nowall.shape[0]:
+        warn.warn('No points left in cluster after removing wall points',
+                  RuntimeWarning)
+        for row in events.iterrows():
+            output['event_number'].append(row[1].event_number)
+            output['run_number'].append(row[1].run_number)
+            output['in_veto_volume'].append(False)
+        return output
+    if events.empty:
+        return output
+    data_arr_scores = kde_likelihood(data_arr_nowall, multiprocess=multiprocess)
+    data_arr_selected = data_arr_scores[-len(data_arr_scores)//n_selection:]
+    db = DBSCAN(eps=DBSCAN_radius,
+                min_samples=DBSCAN_samples)\
+                .fit(pd.DataFrame(data_arr_selected).values[:, :4])
+    data_arr_cluster = np.zeros(data_arr_selected.shape,
+                                dtype=[('x', np.double),
+                                       ('y', np.double),
+                                       ('z', np.double),
+                                       ('t', np.double),
+                                       ('score', np.double),
+                                       ('label', int)])
+    data_arr_cluster['x'] = data_arr_selected['x']
+    data_arr_cluster['y'] = data_arr_selected['y']
+    data_arr_cluster['z'] = data_arr_selected['z']
+    data_arr_cluster['t'] = data_arr_selected['t']
+    data_arr_cluster['score'] = data_arr_selected['score']
+    data_arr_cluster['label'] = db.labels_
+    data_arr_df = pd.DataFrame(data_arr_cluster)
+    data_wo_outliers = data_arr_df.query('label != -1').values[:, :4]
+    selected_fit = KernelDensity(kernel='tophat',
+                                 bandwidth=kernel_radius).fit(data_wo_outliers)
+    for row in events.iterrows():
+        if not invert_time:
+            t = (row[1].event_time - event_time)/(2*timestep)
+        else:
+            t = -(row[1].event_time - event_time)/(2*timestep)
+        score = selected_fit.score([[row[1].x_3d_nn,
+                                     row[1].y_3d_nn,
+                                     row[1].z_3d_nn,
+                                     t]])
+        output['event_number'].append(row[1].event_number)
+        output['run_number'].append(row[1].run_number)
+        output['in_veto_volume'].append(not score == -np.inf)
     return output
