@@ -59,17 +59,19 @@ noise_amplitude = 3e-11
 tol = 0.01 #tolerance for convex hull equivalence checking.
 
 use_static_arrays = True
-noise_only = True
-invert_velocities = True
+noise_only = False
+invert_velocities_config = False
 array_filename = 'interp_velocity_array.npy'
-invert_time = invert_velocities #This only inverts searching of events;
+invert_time_config = invert_velocities_config #This only inverts searching of events;
 #velocity should also be inverted for this to make sense.
 
 #clustering parameters
 kernel_radius = 3
 DBSCAN_radius = kernel_radius
 DBSCAN_samples = 13
-n_selection = 5 #1/n_selection points would be used
+n_selection_po = 12 #1/n_selection points would be used
+n_selection_bipo = 6 #1/n_selection points would be used
+kde_rtol = 1e-6
 
 @njit
 def interp_index_from_coord(coord):

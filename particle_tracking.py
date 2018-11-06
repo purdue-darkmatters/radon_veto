@@ -17,10 +17,7 @@ from radon_veto.convenience_functions import *
 
 #To-do: make more functions run in no-python mode.
 
-interp_velocity_array = np.load(array_filename)
-
-if invert_velocities:
-    interp_velocity_array = interp_velocity_array*(-1)
+interp_velocity_array_outer = np.load(array_filename)
 
 @njit
 def f(y, t, seed, dt, velocity_array_with_noise):
@@ -59,7 +56,7 @@ def RK4_step(y, t, dt, seed, velocity_array_with_noise):
     k4 = dt*f(y+k3, t+dt, seed, dt, velocity_array_with_noise)
     return y+1/6*(k1+2*k2+2*k3+k4)
 
-def generate_path(dt, y0_and_seed_and_tlims):
+def generate_path(dt, interp_velocity_array, y0_and_seed_and_tlims):
     '''RK4 integration with a twist: Diffusion!
 
     Note that as arange is used to determine the list of timesteps the final
@@ -99,7 +96,8 @@ def generate_path(dt, y0_and_seed_and_tlims):
         out_list.append(y)
     return t_list, out_list
 
-def point_cloud(initial_points, time, dt, progressbar=True, multiprocess=True):
+def point_cloud(initial_points, time, dt, progressbar=True,
+                multiprocess=True, invert_velocities=invert_velocities_config):
     '''Generate a point cloud given initial points,
     start and end time tuple, and timestep.
     Output format is a list of numpy arrays.
@@ -107,10 +105,15 @@ def point_cloud(initial_points, time, dt, progressbar=True, multiprocess=True):
     Note that as arange is used to determine the list of timesteps the final
     time is not included.
     '''
+    if invert_velocities:
+        interp_velocity_array = interp_velocity_array_outer*(-1)
+    else:
+        interp_velocity_array = interp_velocity_array_outer
+
     map_list = []
     for i, point in enumerate(initial_points):
         map_list.append(np.array(point+[i]+time))
-    map_f = partial(generate_path, dt)
+    map_f = partial(generate_path, dt, interp_velocity_array)
 
     total = len(initial_points)
     output = []
@@ -130,7 +133,8 @@ def point_cloud(initial_points, time, dt, progressbar=True, multiprocess=True):
 
     return output
 
-def point_cloud_tlist(initial_points, times, dt, progressbar=True):
+def point_cloud_tlist(initial_points, times, dt, progressbar=True,
+                      invert_velocities=invert_velocities_config):
     '''Generate a point cloud given initial points,
     start and end time tuple, and timestep.
     Output format is a list of numpy arrays.
@@ -138,10 +142,15 @@ def point_cloud_tlist(initial_points, times, dt, progressbar=True):
     start and end times for each point in the point_cloud.
     See point_cloud for more.
     '''
+    if invert_velocities:
+        interp_velocity_array = interp_velocity_array_outer*(-1)
+    else:
+        interp_velocity_array = interp_velocity_array_outer
+
     map_list = []
     for i, point in enumerate(initial_points):
         map_list.append(np.array(point+[i]+times[i]))
-    map_f = partial(generate_path, dt)
+    map_f = partial(generate_path, dt, interp_velocity_array)
 
     total = len(initial_points)
     if progressbar:
@@ -256,7 +265,7 @@ def fraction_of_points(t, ld):
 
 def check_if_event_in_hull(points_np, start_time, prefix, halflife, row_le):
     '''check if dataframe row (series) of low energy events is in hull'''
-    if invert_time:
+    if invert_time_config:
         t_index = int((start_time
                        - row_le[1]['event_time'] + timestep/2)//timestep)
         fraction = fraction_of_points(-row_le[1]['event_time'] +
@@ -313,11 +322,17 @@ def check_if_events_in_hull(points, events_dataframe, start_time,
 
     return output
 
+@njit
 def pb214_decay(t):
     '''exponential decay of pb214'''
-    return (1/2)**(t/(1e9*26.8*60))
+    return (1/2)**(abs(t)/(1e9*26.8*60))
 
-def kde_likelihood(data_arr_nowall, multiprocess=True):
+@njit
+def bi214_decay(t):
+    '''exponential decay of pb214'''
+    return (1/2)**(abs(t)/(1e9*19.7*60))
+
+def kde_likelihood(data_arr_nowall, multiprocess=True, event_type='po'):
     '''Add likelihood based on KDE to each data point'''
     kde_fit = KernelDensity(kernel='tophat',
                             bandwidth=kernel_radius).fit(data_arr_nowall)
@@ -333,8 +348,15 @@ def kde_likelihood(data_arr_nowall, multiprocess=True):
     data_arr_scores['y'] = data_arr_nowall[:, 1]
     data_arr_scores['z'] = data_arr_nowall[:, 2]
     data_arr_scores['t'] = data_arr_nowall[:, 3]
-    data_arr_scores['score'] += \
-        np.log(pb214_decay(data_arr_scores['t']*2*timestep))
+    if event_type == 'po':
+        decay_score = np.log(pb214_decay(data_arr_scores['t']*2*timestep))
+    elif event_type == 'bipo':
+        decay_score = np.log(bi214_decay(data_arr_scores['t']*2*timestep))
+    if decay_score > 0:
+        warn.warn('decay_score > 0',
+                  RuntimeWarning)
+    data_arr_scores['score'] += decay_score
+
     data_arr_scores.sort(axis=0, order='score')
     return data_arr_scores
 
@@ -382,7 +404,8 @@ def remove_wall_points_np(data_arr):
     return data_arr_out[:i]
 
 def check_if_events_in_cluster(points, events, event_time,
-                               n_selection=n_selection, multiprocess=True):
+                               n_selection=n_selection_po, multiprocess=True,
+                               event_type='po', invert_time=invert_time_config):
     #pylint: disable=redefined-outer-name
     '''check if a list of events are in the 4D cluster.'''
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
@@ -398,7 +421,9 @@ def check_if_events_in_cluster(points, events, event_time,
         return output
     if events.empty:
         return output
-    data_arr_scores = kde_likelihood(data_arr_nowall, multiprocess=multiprocess)
+    data_arr_scores = kde_likelihood(data_arr_nowall,
+                                     multiprocess=multiprocess,
+                                     event_type=event_type)
     data_arr_selected = data_arr_scores[-len(data_arr_scores)//n_selection:]
     db = DBSCAN(eps=DBSCAN_radius,
                 min_samples=DBSCAN_samples)\
@@ -418,13 +443,10 @@ def check_if_events_in_cluster(points, events, event_time,
     data_arr_cluster['label'] = db.labels_
     data_arr_df = pd.DataFrame(data_arr_cluster)
     data_wo_outliers = data_arr_df.query('label != -1').values[:, :4]
-    selected_fit = KernelDensity(kernel='tophat',
+    selected_fit = KernelDensity(kernel='tophat', rtol=kde_rtol,
                                  bandwidth=kernel_radius).fit(data_wo_outliers)
     for row in events.iterrows():
-        if not invert_time:
-            t = (row[1].event_time - event_time)/(2*timestep)
-        else:
-            t = -(row[1].event_time - event_time)/(2*timestep)
+        t = abs(row[1].event_time - event_time)/(2*timestep)
         score = selected_fit.score([[row[1].x_3d_nn,
                                      row[1].y_3d_nn,
                                      row[1].z_3d_nn,
