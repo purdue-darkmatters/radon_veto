@@ -56,7 +56,8 @@ def RK4_step(y, t, dt, seed, velocity_array_with_noise):
     k4 = dt*f(y+k3, t+dt, seed, dt, velocity_array_with_noise)
     return y+1/6*(k1+2*k2+2*k3+k4)
 
-def generate_path(dt, interp_velocity_array, y0_and_seed_and_tlims):
+def generate_path(dt, interp_velocity_array, y0_and_seed_and_tlims,
+                  noise_a=noise_amplitude):
     '''RK4 integration with a twist: Diffusion!
 
     Note that as arange is used to determine the list of timesteps the final
@@ -77,11 +78,11 @@ def generate_path(dt, interp_velocity_array, y0_and_seed_and_tlims):
                   RuntimeWarning)
     if use_static_arrays:
         velocity_array_with_noise = ((1-noise_only)*interp_velocity_array
-                                     + noise_amplitude*load_noise_array(seed))
+                                     + noise_a*load_noise_array(seed))
     else:
         coordinate_points_new, output_array = create_noise_field(seed)
         velocity_array_with_noise = ((1-noise_only)*interp_velocity_array
-                                     + noise_amplitude*output_array)
+                                     + noise_a*output_array)
     #print('Done with generating noise')
     for i, t in enumerate(t_list[1:]):
         np.random.seed(seed=((seed+round(i*1e5)) % 4294967295))
@@ -97,7 +98,8 @@ def generate_path(dt, interp_velocity_array, y0_and_seed_and_tlims):
     return t_list, out_list
 
 def point_cloud(initial_points, time, dt, progressbar=True,
-                multiprocess=True, invert_velocities=invert_velocities_config):
+                multiprocess=True, invert_velocities=invert_velocities_config,
+                noise_a=noise_amplitude):
     '''Generate a point cloud given initial points,
     start and end time tuple, and timestep.
     Output format is a list of numpy arrays.
@@ -113,7 +115,8 @@ def point_cloud(initial_points, time, dt, progressbar=True,
     map_list = []
     for i, point in enumerate(initial_points):
         map_list.append(np.array(point+[i]+time))
-    map_f = partial(generate_path, dt, interp_velocity_array)
+    map_f = partial(generate_path, dt, interp_velocity_array,
+                    noise_a=noise_a)
 
     total = len(initial_points)
     output = []
@@ -134,7 +137,8 @@ def point_cloud(initial_points, time, dt, progressbar=True,
     return output
 
 def point_cloud_tlist(initial_points, times, dt, progressbar=True,
-                      invert_velocities=invert_velocities_config):
+                      invert_velocities=invert_velocities_config,
+                      noise_a=noise_amplitude):
     '''Generate a point cloud given initial points,
     start and end time tuple, and timestep.
     Output format is a list of numpy arrays.
@@ -150,7 +154,8 @@ def point_cloud_tlist(initial_points, times, dt, progressbar=True,
     map_list = []
     for i, point in enumerate(initial_points):
         map_list.append(np.array(point+[i]+times[i]))
-    map_f = partial(generate_path, dt, interp_velocity_array)
+    map_f = partial(generate_path, dt, interp_velocity_array,
+                    noise_a=noise_a)
 
     total = len(initial_points)
     if progressbar:
@@ -325,14 +330,14 @@ def check_if_events_in_hull(points, events_dataframe, start_time,
 @njit
 def pb214_decay(t):
     '''exponential decay of pb214'''
-    return (1/2)**(abs(t)/(1e9*26.8*60))
+    return (1/2)**(np.abs(t)/(1e9*26.8*60))
 
 @njit
 def bi214_decay(t):
     '''exponential decay of pb214'''
-    return (1/2)**(abs(t)/(1e9*19.7*60))
+    return (1/2)**(np.abs(t)/(1e9*19.7*60))
 
-def kde_likelihood(data_arr_nowall, multiprocess=True, event_type='po'):
+def kde_likelihood(data_arr_nowall, multiprocess=True, event_type='po', sort=True):
     '''Add likelihood based on KDE to each data point'''
     kde_fit = KernelDensity(kernel='tophat',
                             bandwidth=kernel_radius).fit(data_arr_nowall)
@@ -352,12 +357,12 @@ def kde_likelihood(data_arr_nowall, multiprocess=True, event_type='po'):
         decay_score = np.log(pb214_decay(data_arr_scores['t']*2*timestep))
     elif event_type == 'bipo':
         decay_score = np.log(bi214_decay(data_arr_scores['t']*2*timestep))
-    if decay_score > 0:
+    if (decay_score > 0).any():
         warn.warn('decay_score > 0',
                   RuntimeWarning)
     data_arr_scores['score'] += decay_score
-
-    data_arr_scores.sort(axis=0, order='score')
+    if sort:
+        data_arr_scores.sort(axis=0, order='score')
     return data_arr_scores
 
 def data_arr_from_points(points):
@@ -405,7 +410,7 @@ def remove_wall_points_np(data_arr):
 
 def check_if_events_in_cluster(points, events, event_time,
                                n_selection=n_selection_po, multiprocess=True,
-                               event_type='po', invert_time=invert_time_config):
+                               event_type='po'):
     #pylint: disable=redefined-outer-name
     '''check if a list of events are in the 4D cluster.'''
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
@@ -455,3 +460,45 @@ def check_if_events_in_cluster(points, events, event_time,
         output['run_number'].append(row[1].run_number)
         output['in_veto_volume'].append(not score == -np.inf)
     return output
+
+def check_if_events_in_cluster_scored(data_arr_scores_list, events,
+                                      event_time):
+    #pylint: disable=redefined-outer-name
+    '''check if a list of events are in the 4D cluster.'''
+    output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
+    if events.empty:
+        return output
+    data_arr_scores = np.concatenate(data_arr_scores_list)
+    data_arr_selected = data_arr_scores[data_arr_scores['score'] >
+                                        corrected_likelihood_limit]
+    db = DBSCAN(eps=DBSCAN_radius,
+                min_samples=DBSCAN_samples)\
+                .fit(pd.DataFrame(data_arr_selected).values[:, :4])
+    data_arr_cluster = np.zeros(data_arr_selected.shape,
+                                dtype=[('x', np.double),
+                                       ('y', np.double),
+                                       ('z', np.double),
+                                       ('t', np.double),
+                                       ('score', np.double),
+                                       ('label', int)])
+    data_arr_cluster['x'] = data_arr_selected['x']
+    data_arr_cluster['y'] = data_arr_selected['y']
+    data_arr_cluster['z'] = data_arr_selected['z']
+    data_arr_cluster['t'] = data_arr_selected['t']
+    data_arr_cluster['score'] = data_arr_selected['score']
+    data_arr_cluster['label'] = db.labels_
+    data_arr_df = pd.DataFrame(data_arr_cluster)
+    data_wo_outliers = data_arr_df.query('label != -1').values[:, :4]
+    selected_fit = KernelDensity(kernel='tophat', rtol=kde_rtol,
+                                 bandwidth=kernel_radius).fit(data_wo_outliers)
+    for row in events.iterrows():
+        t = abs(row[1].event_time - event_time)/(2*timestep)
+        score = selected_fit.score([[row[1].x_3d_nn,
+                                     row[1].y_3d_nn,
+                                     row[1].z_3d_nn,
+                                     t]])
+        output['event_number'].append(row[1].event_number)
+        output['run_number'].append(row[1].run_number)
+        output['in_veto_volume'].append(not score == -np.inf)
+    return (len(data_arr_selected), output)
+    

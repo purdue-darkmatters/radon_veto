@@ -53,7 +53,7 @@ diffusion_constant = 5.95e-15 #cm^s/ns
 #diffusion_constant = 1e-25 #cm^s/ns
 
 noise_arrays_n = 4 #2^n noise arrays
-noise_amplitude = 3e-11
+noise_amplitude = 2.5e-11
 #noise_amplitude = 0
 
 tol = 0.01 #tolerance for convex hull equivalence checking.
@@ -72,6 +72,12 @@ DBSCAN_samples = 13
 n_selection_po = 12 #1/n_selection points would be used
 n_selection_bipo = 6 #1/n_selection points would be used
 kde_rtol = 1e-6
+
+#likelihood limit for kde and performance-related parameters
+likelihood_limit = 12.5
+n_iter = 100
+pointcloud_size = 40
+corrected_likelihood_limit = likelihood_limit-np.log(n_iter*timestep)+np.log(pointcloud_size)
 
 @njit
 def interp_index_from_coord(coord):
