@@ -462,13 +462,17 @@ def check_if_events_in_cluster(points, events, event_time,
     return output
 
 def check_if_events_in_cluster_scored(data_arr_scores_list, events,
-                                      event_time):
+                                      event_time, event_type='po'):
     #pylint: disable=redefined-outer-name
     '''check if a list of events are in the 4D cluster.'''
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
     if events.empty:
         return output
     data_arr_scores = np.concatenate(data_arr_scores_list)
+    if event_type == 'po':
+        corrected_likelihood_limit = corrected_likelihood_limit_po
+    elif event_type == 'bipo':
+        corrected_likelihood_limit = corrected_likelihood_limit_bipo
     data_arr_selected = data_arr_scores[data_arr_scores['score'] >
                                         corrected_likelihood_limit]
     db = DBSCAN(eps=DBSCAN_radius,

@@ -34,7 +34,7 @@ def index_from_coord_float(coord, grids, lim_box):
             (coord[2]-lim_box[2][0])/grids[2]-0.5)
 
 
-threads = 2
+threads = 6
 timestep = 5e7
 
 posrec_sigma = [0.3, 0.3, 0.4]
@@ -69,15 +69,23 @@ invert_time_config = invert_velocities_config #This only inverts searching of ev
 kernel_radius = 3
 DBSCAN_radius = kernel_radius
 DBSCAN_samples = 13
-n_selection_po = 12 #1/n_selection points would be used
-n_selection_bipo = 6 #1/n_selection points would be used
+n_selection_po = 28 #1/n_selection points would be used
+n_selection_bipo = 12 #1/n_selection points would be used
 kde_rtol = 1e-6
 
 #likelihood limit for kde and performance-related parameters
-likelihood_limit = 12.5
-n_iter = 100
-pointcloud_size = 40
-corrected_likelihood_limit = likelihood_limit-np.log(n_iter*timestep)+np.log(pointcloud_size)
+#likelihood_limit_po = 10.9
+#likelihood_limit_bipo = 9.3
+likelihood_limit_po = 11.2
+likelihood_limit_bipo = 9.1
+n_iter = 1800
+pointcloud_size = 192
+#pointcloud_size = 50
+corrected_likelihood_limit_po = likelihood_limit_po -\
+                                np.log(n_iter*timestep)+np.log(pointcloud_size)
+corrected_likelihood_limit_bipo = likelihood_limit_bipo -\
+                                  np.log(n_iter*timestep) +\
+                                  np.log(pointcloud_size)
 
 @njit
 def interp_index_from_coord(coord):
