@@ -7,6 +7,12 @@ from numba import njit
 
 from radon_veto.config import *
 
+
+
+noise_arrays = []
+for i in range(2**(noise_arrays_n)):
+    noise_arrays.append(np.load('noise_{:04d}.npy'.format(i)))
+
 @njit
 def ramp(r):
     '''ramp function for dealing with edges when generating smooth noise
@@ -276,6 +282,6 @@ def transform(noise_array, dihedral_n, vert_n):
 def load_noise_array(seed):
     '''Loads static noise array given permutation number (seed)'''
     dihedral_n, vert_n, arr_n = generate_transformations(seed)
-    noise_array = np.load('noise_{:04d}.npy'.format(arr_n))
+    noise_array = noise_arrays[arr_n]
     output_array = transform(noise_array, dihedral_n, vert_n)
     return output_array

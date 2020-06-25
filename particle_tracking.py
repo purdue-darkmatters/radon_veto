@@ -1,5 +1,6 @@
 '''functions for point cloud propagation'''
 from multiprocessing import Pool
+from multiprocessing import shared_memory
 from functools import partial
 import warnings as warn
 
@@ -17,7 +18,14 @@ from radon_veto.convenience_functions import *
 
 #To-do: make more functions run in no-python mode.
 
-interp_velocity_array_outer = np.load(array_filename)
+#interp_velocity_array_outer = np.load(array_filename) #uncomment to not use shared memory
+
+interp_velocity_array_outer_l = np.load(array_filename)
+shm = shared_memory.SharedMemory(create=True, size=interp_velocity_array_outer_l.nbytes)
+interp_velocity_array_outer = np.ndarray(interp_velocity_array_outer_l.shape,
+                                         dtype=interp_velocity_array_outer_l.dtype,
+                                         buffer=shm.buf)
+interp_velocity_array_outer[:] = interp_velocity_array_outer_l
 
 @njit
 def f(y, t, seed, dt, velocity_array_with_noise):
