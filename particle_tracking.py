@@ -345,6 +345,11 @@ def bi214_decay(t):
     '''exponential decay of pb214'''
     return (1/2)**(np.abs(t)/(1e9*19.7*60))
 
+@njit
+def po218_decay(t):
+    '''exponential decay of pb214'''
+    return (1/2)**(np.abs(t)/(1e9*3.10*60))
+
 def kde_likelihood(data_arr_nowall, multiprocess=True, event_type='po', sort=True):
     '''Add likelihood based on KDE to each data point'''
     kde_fit = KernelDensity(kernel='tophat',

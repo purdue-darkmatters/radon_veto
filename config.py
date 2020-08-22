@@ -37,7 +37,8 @@ def index_from_coord_float(coord, grids, lim_box):
 threads = 6
 timestep = 5e7
 
-posrec_sigma = [0.3, 0.3, 0.4]
+posrec_sigma = [0.3, 0.3, 0.17] # https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:jingqiang:sr1_wl_model_lows2 
+#https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:analysis:sr1:positon_resolution
 
 #There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
 
