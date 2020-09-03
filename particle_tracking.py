@@ -8,6 +8,7 @@ import numpy as np
 from numba import njit
 import pandas as pd
 from scipy import spatial
+from scipy import stats
 from sklearn.neighbors.kde import KernelDensity
 from sklearn.cluster import DBSCAN
 
@@ -423,7 +424,7 @@ def remove_wall_points_np(data_arr):
 
 def check_if_events_in_cluster(points, events, event_time,
                                n_selection=n_selection_po, multiprocess=True,
-                               event_type='po'):
+                               event_type='po', ):
     #pylint: disable=redefined-outer-name
     '''check if a list of events are in the 4D cluster.'''
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
@@ -475,17 +476,20 @@ def check_if_events_in_cluster(points, events, event_time,
     return output
 
 def check_if_events_in_cluster_scored(data_arr_scores_list, events,
-                                      event_time, event_type='po'):
+                                      event_time, event_type='po', corrected_likelihood_limit=0,
+                                      probability=False, halflife=None
+                                      ):
     #pylint: disable=redefined-outer-name
     '''check if a list of events are in the 4D cluster.'''
     output = {'event_number': [], 'run_number': [], 'in_veto_volume': [], }
     if events.empty:
-        return output
+        return (0, output, [], [])
     data_arr_scores = np.concatenate(data_arr_scores_list)
-    if event_type == 'po':
-        corrected_likelihood_limit = corrected_likelihood_limit_po
-    elif event_type == 'bipo':
-        corrected_likelihood_limit = corrected_likelihood_limit_bipo
+    if not corrected_likelihood_limit:
+        if event_type == 'po':
+            corrected_likelihood_limit = corrected_likelihood_limit_po
+        elif event_type == 'bipo':
+            corrected_likelihood_limit = corrected_likelihood_limit_bipo
     data_arr_selected = data_arr_scores[data_arr_scores['score'] >
                                         corrected_likelihood_limit]
     db = DBSCAN(eps=DBSCAN_radius,
@@ -506,6 +510,8 @@ def check_if_events_in_cluster_scored(data_arr_scores_list, events,
     data_arr_cluster['label'] = db.labels_
     data_arr_df = pd.DataFrame(data_arr_cluster)
     data_wo_outliers = data_arr_df.query('label != -1').values[:, :4]
+    if len(data_wo_outliers) == 0:
+        return (len(data_arr_selected), output, [])
     selected_fit = KernelDensity(kernel='tophat', rtol=kde_rtol,
                                  bandwidth=kernel_radius).fit(data_wo_outliers)
     for row in events.iterrows():
@@ -517,5 +523,21 @@ def check_if_events_in_cluster_scored(data_arr_scores_list, events,
         output['event_number'].append(row[1].event_number)
         output['run_number'].append(row[1].run_number)
         output['in_veto_volume'].append(not score == -np.inf)
-    return (len(data_arr_selected), output)
+    if probability:
+        #import pdb; pdb.set_trace()
+        times = np.unique(data_wo_outliers[:,3])
+        times.sort()
+        p_time_list = []
+        if len(times):
+            for time in times:
+                decay_time = np.log(2)*halflife
+                real_time = time*2*timestep
+                time_right = real_time+timestep/2
+                time_left=max(0, real_time-timestep/2)
+                p = (stats.expon.cdf(time_right, scale=decay_time) -
+                     stats.expon.cdf(time_left, scale=decay_time))
+                p_time_list.append(p*len(data_arr_df.query('t == @time and label != -1'))/pointcloud_size)
+        return (len(data_arr_selected), output, p_time_list)
+            
+    return (len(data_arr_selected), output, [])
     

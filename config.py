@@ -34,7 +34,7 @@ def index_from_coord_float(coord, grids, lim_box):
             (coord[2]-lim_box[2][0])/grids[2]-0.5)
 
 
-threads = 6
+threads = 20
 timestep = 5e7
 
 posrec_sigma = [0.3, 0.3, 0.17] # https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:jingqiang:sr1_wl_model_lows2 
@@ -62,7 +62,8 @@ tol = 0.01 #tolerance for convex hull equivalence checking.
 use_static_arrays = True
 noise_only = False
 invert_velocities_config = False
-array_filename = 'interp_velocity_array.npy'
+# array_filename = 'interp_velocity_array.npy'
+array_filename = '../Rn veto velocity fields/velocity_array_new_method_1000_5_filtered.npy'
 invert_time_config = invert_velocities_config #This only inverts searching of events;
 #velocity should also be inverted for this to make sense.
 
@@ -79,9 +80,9 @@ kde_rtol = 1e-6
 #likelihood_limit_bipo = 9.3
 likelihood_limit_po = 11.2
 likelihood_limit_bipo = 9.1
-n_iter = 1800
+n_iter = 600
 pointcloud_size = 192
-#pointcloud_size = 50
+#pointcloud_size = 20
 corrected_likelihood_limit_po = likelihood_limit_po -\
                                 np.log(n_iter*timestep)+np.log(pointcloud_size)
 corrected_likelihood_limit_bipo = likelihood_limit_bipo -\
