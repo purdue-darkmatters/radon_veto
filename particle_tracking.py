@@ -19,14 +19,14 @@ from radon_veto.convenience_functions import *
 
 #To-do: make more functions run in no-python mode.
 
-#interp_velocity_array_outer = np.load(array_filename) #uncomment to not use shared memory
+interp_velocity_array_outer = np.load(array_filename) #uncomment to not use shared memory
 
-interp_velocity_array_outer_l = np.load(array_filename)
-shm = shared_memory.SharedMemory(create=True, size=interp_velocity_array_outer_l.nbytes)
-interp_velocity_array_outer = np.ndarray(interp_velocity_array_outer_l.shape,
-                                         dtype=interp_velocity_array_outer_l.dtype,
-                                         buffer=shm.buf)
-interp_velocity_array_outer[:] = interp_velocity_array_outer_l
+# interp_velocity_array_outer_l = np.load(array_filename)
+# shm = shared_memory.SharedMemory(create=True, size=interp_velocity_array_outer_l.nbytes)
+# interp_velocity_array_outer = np.ndarray(interp_velocity_array_outer_l.shape,
+#                                          dtype=interp_velocity_array_outer_l.dtype,
+#                                          buffer=shm.buf)
+# interp_velocity_array_outer[:] = interp_velocity_array_outer_l
 
 @njit
 def f(y, t, seed, dt, velocity_array_with_noise):
@@ -492,6 +492,8 @@ def check_if_events_in_cluster_scored(data_arr_scores_list, events,
             corrected_likelihood_limit = corrected_likelihood_limit_bipo
     data_arr_selected = data_arr_scores[data_arr_scores['score'] >
                                         corrected_likelihood_limit]
+    if len(data_arr_selected) == 0:
+        return (len(data_arr_selected), output, [])
     db = DBSCAN(eps=DBSCAN_radius,
                 min_samples=DBSCAN_samples)\
                 .fit(pd.DataFrame(data_arr_selected).values[:, :4])
@@ -524,19 +526,19 @@ def check_if_events_in_cluster_scored(data_arr_scores_list, events,
         output['run_number'].append(row[1].run_number)
         output['in_veto_volume'].append(not score == -np.inf)
     if probability:
-        #import pdb; pdb.set_trace()
         times = np.unique(data_wo_outliers[:,3])
         times.sort()
         p_time_list = []
         if len(times):
             for time in times:
-                decay_time = np.log(2)*halflife
+                decay_time = halflife/np.log(2)
                 real_time = time*2*timestep
                 time_right = real_time+timestep/2
                 time_left=max(0, real_time-timestep/2)
                 p = (stats.expon.cdf(time_right, scale=decay_time) -
                      stats.expon.cdf(time_left, scale=decay_time))
                 p_time_list.append(p*len(data_arr_df.query('t == @time and label != -1'))/pointcloud_size)
+        # import pdb; pdb.set_trace()
         return (len(data_arr_selected), output, p_time_list)
             
     return (len(data_arr_selected), output, [])

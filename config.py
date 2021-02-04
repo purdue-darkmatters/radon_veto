@@ -34,11 +34,13 @@ def index_from_coord_float(coord, grids, lim_box):
             (coord[2]-lim_box[2][0])/grids[2]-0.5)
 
 
-threads = 20
+threads = 24
 timestep = 5e7
 
-posrec_sigma = [0.3, 0.3, 0.17] # https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:jingqiang:sr1_wl_model_lows2 
+# posrec_sigma = [0.3, 0.3, 0.17] # https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:jingqiang:sr1_wl_model_lows2 (for alphas)
 #https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:analysis:sr1:positon_resolution
+
+posrec_sigma = [1.12/np.sqrt(2), 1.12/np.sqrt(2), 0.17] #for lowER https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:analysis:sr1:positon_resolution
 
 #There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
 
@@ -54,7 +56,7 @@ diffusion_constant = 5.95e-15 #cm^s/ns
 #diffusion_constant = 1e-25 #cm^s/ns
 
 noise_arrays_n = 4 #2^n noise arrays
-noise_amplitude = 2.5e-11
+noise_amplitude = 5e-11
 #noise_amplitude = 0
 
 tol = 0.01 #tolerance for convex hull equivalence checking.
@@ -63,7 +65,7 @@ use_static_arrays = True
 noise_only = False
 invert_velocities_config = False
 # array_filename = 'interp_velocity_array.npy'
-array_filename = '../Rn veto velocity fields/velocity_array_new_method_1000_5_filtered.npy'
+array_filename = '/depot/darkmatter/data/jupyterhub/qin/Rn veto velocity fields/velocity_array_new_method_1000_7.npy'
 invert_time_config = invert_velocities_config #This only inverts searching of events;
 #velocity should also be inverted for this to make sense.
 
@@ -76,13 +78,13 @@ n_selection_bipo = 12 #1/n_selection points would be used
 kde_rtol = 1e-6
 
 #likelihood limit for kde and performance-related parameters
-#likelihood_limit_po = 10.9
-#likelihood_limit_bipo = 9.3
-likelihood_limit_po = 11.2
+# likelihood_limit_po = 11.2
+likelihood_limit_po = 12
 likelihood_limit_bipo = 9.1
+# likelihood_limit_bipo = 8
 n_iter = 600
 pointcloud_size = 192
-#pointcloud_size = 20
+# pointcloud_size = 20
 corrected_likelihood_limit_po = likelihood_limit_po -\
                                 np.log(n_iter*timestep)+np.log(pointcloud_size)
 corrected_likelihood_limit_bipo = likelihood_limit_bipo -\
