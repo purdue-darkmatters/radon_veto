@@ -42,6 +42,13 @@ timestep = 5e7
 
 posrec_sigma = [1.12/np.sqrt(2), 1.12/np.sqrt(2), 0.17] #for lowER https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:analysis:sr1:positon_resolution
 
+def posrec_sigma_s2_dep(s2):
+    #From https://escholarship.org/uc/item/69z9w429#section.2.1, p50.
+    a = 5.2
+    b = -1.61
+    c = 0.019
+    return a + np.log(s2)/np.log(10) + c*np.sqrt(s2)
+
 #There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
 
 radius = 47.9
