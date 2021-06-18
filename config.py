@@ -34,7 +34,7 @@ def index_from_coord_float(coord, grids, lim_box):
             (coord[2]-lim_box[2][0])/grids[2]-0.5)
 
 
-threads = 24
+threads = 30
 timestep = 5e7
 
 # posrec_sigma = [0.3, 0.3, 0.17] # https://xe1t-wiki.lngs.infn.it/doku.php?id=xenon:xenon1t:jingqiang:sr1_wl_model_lows2 (for alphas)
@@ -47,7 +47,7 @@ def posrec_sigma_s2_dep(s2):
     a = 5.2
     b = -1.61
     c = 0.019
-    return a + np.log(s2)/np.log(10) + c*np.sqrt(s2)
+    return a + b*np.log(s2)/np.log(10) + c*np.sqrt(s2)
 
 #There seem to be events below 96.9 and with radius outside 47.9. This needs investigating.
 
@@ -86,8 +86,8 @@ kde_rtol = 1e-6
 
 #likelihood limit for kde and performance-related parameters
 # likelihood_limit_po = 11.2
-likelihood_limit_po = 12
-likelihood_limit_bipo = 9.1
+likelihood_limit_po = 11
+likelihood_limit_bipo = 9
 # likelihood_limit_bipo = 8
 n_iter = 600
 pointcloud_size = 192
